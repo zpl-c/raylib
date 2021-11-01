@@ -1,11 +1,6 @@
 # Ignore generated files
 # ...
 
-# Ignore all without extensions
-*
-!*.*
-!*/
-
 # Ignore VIM's backup generated files
 *.swp
 *.swo
@@ -50,6 +45,7 @@ ipch/
 *.db
 *.opendb
 packages/
+!examples/models/resources/models/obj/
 
 # Ignore compiled binaries
 *.o
@@ -98,3 +94,10 @@ build
 GPATH
 GRTAGS
 GTAGS
+
+# Zig programming language
+zig-cache/
+zig-out/
+build/
+build-*/
+docgen_tmp/
