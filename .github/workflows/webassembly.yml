@@ -27,9 +27,9 @@ jobs:
       uses: actions/checkout@master
   
     - name: Setup emsdk
-      uses: mymindstorm/setup-emsdk@v9
+      uses: mymindstorm/setup-emsdk@v11
       with:
-        version: 2.0.0
+        version: 3.0.0
         actions-cache-folder: 'emsdk-cache'
         
     - name: Setup Release Version
@@ -52,12 +52,15 @@ jobs:
       run: |
         cd src
         emcc -v
-        make PLATFORM=PLATFORM_WEB EMSDK_PATH="D:/a/raylib/raylib/emsdk-cache/emsdk-master" RAYLIB_RELEASE_PATH="../build/${{ env.RELEASE_NAME }}/lib" -B
+        make PLATFORM=PLATFORM_WEB EMSDK_PATH="D:/a/raylib/raylib/emsdk-cache/emsdk-main" RAYLIB_RELEASE_PATH="../build/${{ env.RELEASE_NAME }}/lib" -B
         cd ..
   
     - name: Generate Artifacts
       run: |
         copy /Y .\src\raylib.h .\build\${{ env.RELEASE_NAME }}\include\raylib.h
+        copy /Y .\src\raymath.h .\build\${{ env.RELEASE_NAME }}\include\raymath.h
+        copy /Y .\src\rlgl.h .\build\${{ env.RELEASE_NAME }}\include\rlgl.h
+        copy /Y .\CHANGELOG .\build/${{ env.RELEASE_NAME }}\CHANGELOG
         copy /Y .\README.md .\build\${{ env.RELEASE_NAME }}\README.md
         copy /Y .\LICENSE .\build\${{ env.RELEASE_NAME }}\LICENSE
         cd build
