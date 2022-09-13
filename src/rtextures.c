@@ -1416,9 +1416,9 @@ void ImageResize(Image *image, int newWidth, int newHeight)
 
     // Check if we can use a fast path on image scaling
     // It can be for 8 bit per channel images with 1 to 4 channels per pixel
-    if ((image->format == PIXELFORMAT_UNCOMPRESSED_GRAYSCALE) || 
-        (image->format == PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA) || 
-        (image->format == PIXELFORMAT_UNCOMPRESSED_R8G8B8) || 
+    if ((image->format == PIXELFORMAT_UNCOMPRESSED_GRAYSCALE) ||
+        (image->format == PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA) ||
+        (image->format == PIXELFORMAT_UNCOMPRESSED_R8G8B8) ||
         (image->format == PIXELFORMAT_UNCOMPRESSED_R8G8B8A8))
     {
         int bytesPerPixel = GetPixelDataSize(1, 1, image->format);
@@ -3362,8 +3362,6 @@ void DrawTexturePro(Texture2D texture, Rectangle source, Rectangle dest, Vector2
             bottomRight.y = y + (dx + dest.width)*sinRotation + (dy + dest.height)*cosRotation;
         }
 
-        rlCheckRenderBatchLimit(4);     // Make sure there is enough free space on the batch buffer
-
         rlSetTexture(texture.id);
         rlBegin(RL_QUADS);
 
@@ -3493,8 +3491,6 @@ void DrawTextureNPatch(Texture2D texture, NPatchInfo nPatchInfo, Rectangle dest,
         coordC.y = (nPatchInfo.source.y + nPatchInfo.source.height - bottomBorder)/height;
         coordD.x = (nPatchInfo.source.x + nPatchInfo.source.width)/width;
         coordD.y = (nPatchInfo.source.y + nPatchInfo.source.height)/height;
-
-        rlCheckRenderBatchLimit(9 * 3 * 2);         // Maxium number of verts that could happen
 
         rlSetTexture(texture.id);
 
@@ -3639,11 +3635,9 @@ void DrawTextureNPatch(Texture2D texture, NPatchInfo nPatchInfo, Rectangle dest,
 // without crossing perimeter, points must be in anticlockwise order
 void DrawTexturePoly(Texture2D texture, Vector2 center, Vector2 *points, Vector2 *texcoords, int pointCount, Color tint)
 {
-    rlCheckRenderBatchLimit((pointCount - 1)*4);
-
     rlSetTexture(texture.id);
 
-    // Texturing is only supported on QUADs
+    // Texturing is only supported on RL_QUADS
     rlBegin(RL_QUADS);
 
         rlColor4ub(tint.r, tint.g, tint.b, tint.a);
@@ -4574,7 +4568,7 @@ static Image LoadPVR(const unsigned char *fileData, unsigned int fileSize)
         unsigned int flags;
         unsigned char channels[4];      // pixelFormat high part
         unsigned char channelDepth[4];  // pixelFormat low part
-        unsigned int colourSpace;
+        unsigned int colorSpace;
         unsigned int channelType;
         unsigned int height;
         unsigned int width;

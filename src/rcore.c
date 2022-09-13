@@ -57,9 +57,6 @@
 *       WARNING: Reconfiguring standard input could lead to undesired effects, like breaking other running processes or
 *       blocking the device if not restored properly. Use with care.
 *
-*   #define SUPPORT_MOUSE_CURSOR_POINT
-*       Draw a mouse pointer on screen
-*
 *   #define SUPPORT_BUSY_WAIT_LOOP
 *       Use busy wait loop for timing sync, if not defined, a high-resolution timer is setup and used
 *
@@ -217,8 +214,12 @@
 
     // Support retrieving native window handlers
     #if defined(_WIN32)
+        typedef void *PVOID;
+        typedef PVOID HANDLE;
+        typedef HANDLE HWND;
         #define GLFW_EXPOSE_NATIVE_WIN32
-        #include "GLFW/glfw3native.h"       // WARNING: It requires customization to avoid windows.h inclusion!
+        #define GLFW_NATIVE_INCLUDE_NONE // To avoid some symbols re-definition in windows.h
+        #include "GLFW/glfw3native.h"
 
         #if defined(SUPPORT_WINMM_HIGHRES_TIMER) && !defined(SUPPORT_BUSY_WAIT_LOOP)
             // NOTE: Those functions require linking with winmm library
@@ -239,6 +240,12 @@
 
         //#define GLFW_EXPOSE_NATIVE_COCOA    // WARNING: Fails due to type redefinition
         #include "GLFW/glfw3native.h"       // Required for: glfwGetCocoaWindow()
+    #endif
+    
+    // TODO: HACK: Added flag if not provided by GLFW when using external library
+    // Latest GLFW release (GLFW 3.3.8) does not implement this flag, it was added for 3.4.0-dev
+    #if !defined(GLFW_MOUSE_PASSTHROUGH)
+        #define GLFW_MOUSE_PASSTHROUGH      0x0002000D
     #endif
 #endif
 
@@ -498,7 +505,7 @@ typedef struct CoreData {
 //----------------------------------------------------------------------------------
 // Global Variables Definition
 //----------------------------------------------------------------------------------
-const char *raylibVersion = RAYLIB_VERSION; // raylib version symbol, it could be required for some bindings
+RLAPI const char *raylib_version = RAYLIB_VERSION;  // raylib version exported symbol, required for some bindings
 
 static CoreData CORE = { 0 };               // Global CORE state context
 
@@ -1414,7 +1421,7 @@ void SetWindowState(unsigned int flags)
     {
         TRACELOG(LOG_WARNING, "WINDOW: High DPI can only by configured before window initialization");
     }
-    
+
     // State change: FLAG_WINDOW_MOUSE_PASSTHROUGH
     if (((CORE.Window.flags & FLAG_WINDOW_MOUSE_PASSTHROUGH) != (flags & FLAG_WINDOW_MOUSE_PASSTHROUGH)) && ((flags & FLAG_WINDOW_MOUSE_PASSTHROUGH) > 0))
     {
@@ -1522,7 +1529,7 @@ void ClearWindowState(unsigned int flags)
     {
         TRACELOG(LOG_WARNING, "WINDOW: High DPI can only by configured before window initialization");
     }
-    
+
     // State change: FLAG_WINDOW_MOUSE_PASSTHROUGH
     if (((CORE.Window.flags & FLAG_WINDOW_MOUSE_PASSTHROUGH) > 0) && ((flags & FLAG_WINDOW_MOUSE_PASSTHROUGH) > 0))
     {
@@ -1762,7 +1769,7 @@ int GetMonitorWidth(int monitor)
     if ((monitor >= 0) && (monitor < monitorCount))
     {
         const GLFWvidmode *mode = glfwGetVideoMode(monitors[monitor]);
-        
+
         if (mode) return mode->width;
         else TRACELOG(LOG_WARNING, "GLFW: Failed to find video mode for selected monitor");
     }
@@ -1781,7 +1788,7 @@ int GetMonitorHeight(int monitor)
     if ((monitor >= 0) && (monitor < monitorCount))
     {
         const GLFWvidmode *mode = glfwGetVideoMode(monitors[monitor]);
-        
+
         if (mode) return mode->height;
         else TRACELOG(LOG_WARNING, "GLFW: Failed to find video mode for selected monitor");
     }
@@ -2033,15 +2040,6 @@ void BeginDrawing(void)
 void EndDrawing(void)
 {
     rlDrawRenderBatchActive();      // Update and draw internal render batch
-
-#if defined(SUPPORT_MODULE_RSHAPES) && defined(SUPPORT_MOUSE_CURSOR_POINT)
-    // Draw a small rectangle on mouse position for user reference
-    if (!CORE.Input.Mouse.cursorHidden)
-    {
-        DrawRectangle(CORE.Input.Mouse.currentPosition.x, CORE.Input.Mouse.currentPosition.y, 3, 3, MAROON);    // WARNING: Module required: rshapes
-        rlDrawRenderBatchActive();  // Update and draw internal render batch
-    }
-#endif
 
 #if defined(SUPPORT_GIF_RECORDING)
     // Draw record indicator
@@ -2341,7 +2339,7 @@ VrStereoConfig LoadVrStereoConfig(VrDeviceInfo device)
 {
     VrStereoConfig config = { 0 };
 
-    if ((rlGetVersion() == OPENGL_33) || (rlGetVersion() == OPENGL_ES_20))
+    if ((rlGetVersion() == RL_OPENGL_33) || (rlGetVersion() == RL_OPENGL_ES_20))
     {
         // Compute aspect ratio
         float aspect = ((float)device.hResolution*0.5f)/(float)device.vResolution;
@@ -2844,7 +2842,7 @@ bool FileExists(const char *fileName)
 bool IsFileExtension(const char *fileName, const char *ext)
 {
     #define MAX_FILE_EXTENSION_SIZE  16
-    
+
     bool result = false;
     const char *fileExt = GetFileExtension(fileName);
 
@@ -2854,7 +2852,7 @@ bool IsFileExtension(const char *fileName, const char *ext)
         int extCount = 0;
         const char **checkExts = TextSplit(ext, ';', &extCount);  // WARNING: Module required: rtext
 
-        char fileExtLower[MAX_FILE_EXTENSION_SIZE] = { 0 };
+        char fileExtLower[MAX_FILE_EXTENSION_SIZE + 1] = { 0 };
         strncpy(fileExtLower, TextToLower(fileExt),MAX_FILE_EXTENSION_SIZE);  // WARNING: Module required: rtext
 
         for (int i = 0; i < extCount; i++)
@@ -3125,14 +3123,14 @@ FilePathList LoadDirectoryFiles(const char *dirPath)
 {
     FilePathList files = { 0 };
     unsigned int fileCounter = 0;
-    
+
     struct dirent *entity;
     DIR *dir = opendir(dirPath);
 
     if (dir != NULL) // It's a directory
     {
         // SCAN 1: Count files
-        while ((entity = readdir(dir)) != NULL) 
+        while ((entity = readdir(dir)) != NULL)
         {
             // NOTE: We skip '.' (current dir) and '..' (parent dir) filepaths
             if ((strcmp(entity->d_name, ".") != 0) && (strcmp(entity->d_name, "..") != 0)) fileCounter++;
@@ -3144,16 +3142,16 @@ FilePathList LoadDirectoryFiles(const char *dirPath)
         for (unsigned int i = 0; i < files.capacity; i++) files.paths[i] = (char *)RL_MALLOC(MAX_FILEPATH_LENGTH*sizeof(char));
 
         closedir(dir);
-        
+
         // SCAN 2: Read filepaths
         // NOTE: Directory paths are also registered
         ScanDirectoryFiles(dirPath, &files, NULL);
-        
+
         // Security check: read files.count should match fileCounter
         if (files.count != files.capacity) TRACELOG(LOG_WARNING, "FILEIO: Read files count do not match capacity allocated");
     }
     else TRACELOG(LOG_WARNING, "FILEIO: Failed to open requested directory");  // Maybe it's a file...
-    
+
     return files;
 }
 
@@ -3226,13 +3224,13 @@ FilePathList LoadDroppedFiles(void)
 void UnloadDroppedFiles(FilePathList files)
 {
     // WARNING: files pointers are the same as internal ones
-    
+
     if (files.count > 0)
     {
         for (unsigned int i = 0; i < files.count; i++) RL_FREE(files.paths[i]);
 
         RL_FREE(files.paths);
-        
+
         CORE.Window.dropFileCount = 0;
         CORE.Window.dropFilepaths = NULL;
     }
@@ -3771,14 +3769,10 @@ void SetMouseScale(float scaleX, float scaleY)
 float GetMouseWheelMove(void)
 {
     float result = 0.0f;
-    
+
 #if !defined(PLATFORM_ANDROID)
     if (fabsf(CORE.Input.Mouse.currentWheelMove.x) > fabsf(CORE.Input.Mouse.currentWheelMove.y)) result = (float)CORE.Input.Mouse.currentWheelMove.x;
     else result = (float)CORE.Input.Mouse.currentWheelMove.y;
-#endif
-
-#if defined(PLATFORM_WEB)
-    result /= 100.0f;
 #endif
 
     return result;
@@ -3787,16 +3781,11 @@ float GetMouseWheelMove(void)
 // Get mouse wheel movement X/Y as a vector
 Vector2 GetMouseWheelMoveV(void)
 {
-#if defined(PLATFORM_ANDROID)
-    return (Vector2){ 0.0f, 0.0f };
-#endif
-#if defined(PLATFORM_WEB)
-    Vector2 result = CORE.Input.Mouse.currentWheelMove;
-    result.x /= 100.0f;
-    result.y /= 100.0f;
-#endif
+    Vector2 result = { 0 };
+   
+    result = CORE.Input.Mouse.currentWheelMove;
 
-    return CORE.Input.Mouse.currentWheelMove;
+    return result;
 }
 
 // Set mouse cursor
@@ -3999,7 +3988,7 @@ static bool InitGraphicsDevice(int width, int height)
     #endif
     }
     else glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_FALSE);
-    
+
     // Mouse passthrough
     if ((CORE.Window.flags & FLAG_WINDOW_MOUSE_PASSTHROUGH) > 0) glfwWindowHint(GLFW_MOUSE_PASSTHROUGH, GLFW_TRUE);
     else glfwWindowHint(GLFW_MOUSE_PASSTHROUGH, GLFW_FALSE);
@@ -4017,12 +4006,12 @@ static bool InitGraphicsDevice(int width, int height)
     // For example, if using OpenGL 1.1, driver can provide a 4.3 context forward compatible.
 
     // Check selection OpenGL version
-    if (rlGetVersion() == OPENGL_21)
+    if (rlGetVersion() == RL_OPENGL_21)
     {
         glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);          // Choose OpenGL major version (just hint)
         glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);          // Choose OpenGL minor version (just hint)
     }
-    else if (rlGetVersion() == OPENGL_33)
+    else if (rlGetVersion() == RL_OPENGL_33)
     {
         glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);          // Choose OpenGL major version (just hint)
         glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);          // Choose OpenGL minor version (just hint)
@@ -4035,7 +4024,7 @@ static bool InitGraphicsDevice(int width, int height)
 #endif
         //glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE); // Request OpenGL DEBUG context
     }
-    else if (rlGetVersion() == OPENGL_43)
+    else if (rlGetVersion() == RL_OPENGL_43)
     {
         glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);          // Choose OpenGL major version (just hint)
         glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);          // Choose OpenGL minor version (just hint)
@@ -4045,7 +4034,7 @@ static bool InitGraphicsDevice(int width, int height)
         glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);   // Enable OpenGL Debug Context
 #endif
     }
-    else if (rlGetVersion() == OPENGL_ES_20)                    // Request OpenGL ES 2.0 context
+    else if (rlGetVersion() == RL_OPENGL_ES_20)                    // Request OpenGL ES 2.0 context
     {
         glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
         glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
@@ -4091,14 +4080,6 @@ static bool InitGraphicsDevice(int width, int height)
                 }
             }
         }
-
-#if defined(PLATFORM_DESKTOP)
-        // If we are windowed fullscreen, ensures that window does not minimize when focus is lost
-        if ((CORE.Window.screen.height == CORE.Window.display.height) && (CORE.Window.screen.width == CORE.Window.display.width))
-        {
-            glfwWindowHint(GLFW_AUTO_ICONIFY, 0);
-        }
-#endif
         TRACELOG(LOG_WARNING, "SYSTEM: Closest fullscreen videomode: %i x %i", CORE.Window.display.width, CORE.Window.display.height);
 
         // NOTE: ISSUE: Closest videomode could not match monitor aspect-ratio, for example,
@@ -4120,6 +4101,13 @@ static bool InitGraphicsDevice(int width, int height)
     }
     else
     {
+#if defined(PLATFORM_DESKTOP)
+        // If we are windowed fullscreen, ensures that window does not minimize when focus is lost
+        if ((CORE.Window.screen.height == CORE.Window.display.height) && (CORE.Window.screen.width == CORE.Window.display.width))
+        {
+            glfwWindowHint(GLFW_AUTO_ICONIFY, 0);
+        }
+#endif
         // No-fullscreen window creation
         CORE.Window.handle = glfwCreateWindow(CORE.Window.screen.width, CORE.Window.screen.height, (CORE.Window.title != 0)? CORE.Window.title : " ", NULL, NULL);
 
@@ -4641,8 +4629,6 @@ static bool InitGraphicsDevice(int width, int height)
     // NOTE: It updated CORE.Window.render.width and CORE.Window.render.height
     SetupViewport(CORE.Window.currentFbo.width, CORE.Window.currentFbo.height);
 
-    ClearBackground(RAYWHITE);      // Default background color for raylib games :P
-
 #if defined(PLATFORM_ANDROID)
     CORE.Window.ready = true;
 #endif
@@ -5132,13 +5118,13 @@ void PollInputEvents(void)
 }
 
 // Scan all files and directories in a base path
-// WARNING: files.paths[] must be previously allocated and 
+// WARNING: files.paths[] must be previously allocated and
 // contain enough space to store all required paths
 static void ScanDirectoryFiles(const char *basePath, FilePathList *files, const char *filter)
 {
     static char path[MAX_FILEPATH_LENGTH] = { 0 };
     memset(path, 0, MAX_FILEPATH_LENGTH);
-    
+
     struct dirent *dp = NULL;
     DIR *dir = opendir(basePath);
 
@@ -5150,7 +5136,7 @@ static void ScanDirectoryFiles(const char *basePath, FilePathList *files, const 
                 (strcmp(dp->d_name, "..") != 0))
             {
                 sprintf(path, "%s/%s", basePath, dp->d_name);
-                
+
                 if (filter != NULL)
                 {
                     if (IsFileExtension(path, filter))
@@ -5177,7 +5163,7 @@ static void ScanDirectoryFilesRecursively(const char *basePath, FilePathList *fi
 {
     static char path[MAX_FILEPATH_LENGTH] = { 0 };
     memset(path, 0, MAX_FILEPATH_LENGTH);
-    
+
     struct dirent *dp = NULL;
     DIR *dir = opendir(basePath);
 
@@ -5289,6 +5275,8 @@ static void WindowFocusCallback(GLFWwindow *window, int focused)
 // GLFW3 Keyboard Callback, runs on key pressed
 static void KeyCallback(GLFWwindow *window, int key, int scancode, int action, int mods)
 {
+    if (key < 0) return;    // Security check, macOS fn key generates -1
+    
     // WARNING: GLFW could return GLFW_REPEAT, we need to consider it as 1
     // to work properly with our implementation (IsKeyDown/IsKeyUp checks)
     if (action == GLFW_RELEASE) CORE.Input.Keyboard.currentKeyState[key] = 0;
@@ -5474,11 +5462,11 @@ static void WindowDropCallback(GLFWwindow *window, int count, const char **paths
         for (unsigned int i = 0; i < CORE.Window.dropFileCount; i++) RL_FREE(CORE.Window.dropFilepaths[i]);
 
         RL_FREE(CORE.Window.dropFilepaths);
-        
+
         CORE.Window.dropFileCount = 0;
         CORE.Window.dropFilepaths = NULL;
     }
-    
+
     // WARNING: Paths are freed by GLFW when the callback returns, we must keep an internal copy
     CORE.Window.dropFileCount = count;
     CORE.Window.dropFilepaths = (char **)RL_CALLOC(CORE.Window.dropFileCount, sizeof(char *));

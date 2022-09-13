@@ -45,8 +45,8 @@
 PLATFORM             ?= PLATFORM_DESKTOP
 
 # Define required raylib variables
-RAYLIB_VERSION        = 4.0.0
-RAYLIB_API_VERSION    = 400
+RAYLIB_VERSION        = 4.2.0
+RAYLIB_API_VERSION    = 420
 
 # Define raylib source code path
 RAYLIB_SRC_PATH      ?= ../src
@@ -187,7 +187,7 @@ ifeq ($(PLATFORM),PLATFORM_WEB)
     CLANG_PATH          = $(EMSDK_PATH)/upstream/bin
     PYTHON_PATH         = $(EMSDK_PATH)/python/3.9.2-1_64bit
     NODE_PATH           = $(EMSDK_PATH)/node/14.15.5_64bit/bin
-    export PATH         = $(EMSDK_PATH);$(EMSCRIPTEN_PATH);$(CLANG_PATH);$(NODE_PATH);$(PYTHON_PATH);C:\raylib\MinGW\bin:$$(PATH)
+    export PATH         := $(EMSDK_PATH):$(EMSCRIPTEN_PATH):$(CLANG_PATH):$(NODE_PATH):$(PYTHON_PATH):C:\raylib\MinGW\bin:$(PATH)
 endif
 
 ifeq ($(PLATFORM),PLATFORM_ANDROID)
@@ -307,15 +307,17 @@ endif
 #  -Wno-missing-braces      ignore invalid warning (GCC bug 53119)
 #  -Wno-unused-value        ignore unused return values of some functions (i.e. fread())
 #  -D_DEFAULT_SOURCE        use with -std=c99 on Linux and PLATFORM_WEB, required for timespec
+#  -D_GNU_SOURCE            access to lots of nonstandard GNU/Linux extension functions
 #  -Werror=pointer-arith    catch unportable code that does direct arithmetic on void pointers
 #  -fno-strict-aliasing     jar_xm.h does shady stuff (breaks strict aliasing)
-CFLAGS = -Wall -D_DEFAULT_SOURCE -D$(PLATFORM) -D$(GRAPHICS) -Wno-missing-braces -Werror=pointer-arith -fno-strict-aliasing $(CUSTOM_CFLAGS)
+CFLAGS = -Wall -D_GNU_SOURCE -D$(PLATFORM) -D$(GRAPHICS) -Wno-missing-braces -Werror=pointer-arith -fno-strict-aliasing $(CUSTOM_CFLAGS)
 
 ifneq ($(RAYLIB_CONFIG_FLAGS), NONE)
     CFLAGS += -DEXTERNAL_CONFIG_FLAGS $(RAYLIB_CONFIG_FLAGS)
 endif
 
 ifeq ($(PLATFORM), PLATFORM_WEB)
+    # NOTE: When using multi-threading in the user code, it requires -pthread enabled
     CFLAGS += -std=gnu99
 else
     CFLAGS += -std=c99
@@ -503,6 +505,8 @@ ifeq ($(PLATFORM),PLATFORM_DESKTOP)
         ifeq ($(USE_WAYLAND_DISPLAY),FALSE)
             LDLIBS += -lX11
         endif
+        # TODO: On ARM 32bit arch, miniaudio requires atomics library
+        #LDLIBS += -latomic
     endif
     ifeq ($(PLATFORM_OS),OSX)
         LDLIBS = -framework OpenGL -framework Cocoa -framework IOKit -framework CoreAudio -framework CoreVideo

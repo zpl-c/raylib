@@ -30,7 +30,7 @@ PLATFORM              ?= PLATFORM_DESKTOP
 
 # Define required raylib variables
 PROJECT_NAME          ?= raylib_examples
-RAYLIB_VERSION        ?= 4.0.0
+RAYLIB_VERSION        ?= 4.2.0
 RAYLIB_PATH           ?= ..
 
 # Locations of raylib.h and libraylib.a/libraylib.so
@@ -325,6 +325,9 @@ ifeq ($(PLATFORM),PLATFORM_DESKTOP)
         ifeq ($(RAYLIB_LIBTYPE),SHARED)
             LDLIBS += -lc
         endif
+        
+        # TODO: On ARM 32bit arch, miniaudio requires atomics library
+        LDLIBS += -latomic
     endif
     ifeq ($(PLATFORM_OS),OSX)
         # Libraries for OSX 10.9 desktop compiling
@@ -463,6 +466,7 @@ MODELS = \
     models/models_loading \
     models/models_loading_vox \
     models/models_loading_gltf \
+    models/models_loading_m3d \
     models/models_orthographic_projection \
     models/models_rlgl_solar_system \
     models/models_skybox \
@@ -495,7 +499,8 @@ AUDIO = \
     audio/audio_music_stream \
     audio/audio_raw_stream \
     audio/audio_sound_loading \
-    audio/audio_multichannel_sound
+    audio/audio_multichannel_sound \
+    audio/audio_stream_effects
 
 CURRENT_MAKEFILE = $(lastword $(MAKEFILE_LIST))
 

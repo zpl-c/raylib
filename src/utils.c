@@ -160,14 +160,14 @@ void TraceLog(int logType, const char *text, ...)
 
 // Internal memory allocator
 // NOTE: Initializes to zero by default
-void *MemAlloc(int size)
+void *MemAlloc(unsigned int size)
 {
     void *ptr = RL_CALLOC(size, 1);
     return ptr;
 }
 
 // Internal memory reallocator
-void *MemRealloc(void *ptr, int size)
+void *MemRealloc(void *ptr, unsigned int size)
 {
     void *ret = RL_REALLOC(ptr, size);
     return ret;
@@ -311,7 +311,7 @@ bool ExportDataAsCode(const char *data, unsigned int size, const char *fileName)
     if (success != 0) TRACELOG(LOG_INFO, "FILEIO: [%s] Data as code exported successfully", fileName);
     else TRACELOG(LOG_WARNING, "FILEIO: [%s] Failed to export data as code", fileName);
 
-    return success; 
+    return success;
 }
 
 // Load text data from file, returns a '\0' terminated string

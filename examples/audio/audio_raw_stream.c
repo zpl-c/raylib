@@ -125,7 +125,7 @@ int main(void)
         if (frequency != oldFrequency)
         {
             // Compute wavelength. Limit size in both directions.
-            int oldWavelength = waveLength;
+            //int oldWavelength = waveLength;
             waveLength = (int)(22050/frequency);
             if (waveLength > MAX_SAMPLES/2) waveLength = MAX_SAMPLES/2;
             if (waveLength < 1) waveLength = 1;
@@ -134,6 +134,11 @@ int main(void)
             for (int i = 0; i < waveLength*2; i++)
             {
                 data[i] = (short)(sinf(((2*PI*(float)i/waveLength)))*32000);
+            }
+            // Make sure the rest of the line is flat
+            for (int j = waveLength*2; j < MAX_SAMPLES; j++)
+            {
+                data[j] = (short)0;
             }
 
             // Scale read cursor's position to minimize transition artifacts

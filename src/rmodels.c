@@ -12,6 +12,7 @@
 *   #define SUPPORT_FILEFORMAT_IQM
 *   #define SUPPORT_FILEFORMAT_GLTF
 *   #define SUPPORT_FILEFORMAT_VOX
+*   #define SUPPORT_FILEFORMAT_M3D
 *       Selected desired fileformats to be supported for model data loading.
 *
 *   #define SUPPORT_MESH_GENERATION
@@ -86,6 +87,15 @@
     #include "external/vox_loader.h"    // VOX file format loading (MagikaVoxel)
 #endif
 
+#if defined(SUPPORT_FILEFORMAT_M3D)
+    #define M3D_MALLOC RL_MALLOC
+    #define M3D_REALLOC RL_REALLOC
+    #define M3D_FREE RL_FREE
+
+    #define M3D_IMPLEMENTATION
+    #include "external/m3d.h"           // Model3D file format loading
+#endif
+
 #if defined(SUPPORT_MESH_GENERATION)
     #define PAR_MALLOC(T, N) ((T*)RL_MALLOC(N*sizeof(T)))
     #define PAR_CALLOC(T, N) ((T*)RL_CALLOC(N*sizeof(T), 1))
@@ -141,6 +151,10 @@ static Model LoadGLTF(const char *fileName);    // Load GLTF mesh data
 #if defined(SUPPORT_FILEFORMAT_VOX)
 static Model LoadVOX(const char *filename);     // Load VOX mesh data
 #endif
+#if defined(SUPPORT_FILEFORMAT_M3D)
+static Model LoadM3D(const char *filename);     // Load M3D mesh data
+static ModelAnimation *LoadModelAnimationsM3D(const char *fileName, unsigned int *animCount);    // Load M3D animation data
+#endif
 
 //----------------------------------------------------------------------------------
 // Module Functions Definition
@@ -149,11 +163,6 @@ static Model LoadVOX(const char *filename);     // Load VOX mesh data
 // Draw a line in 3D world space
 void DrawLine3D(Vector3 startPos, Vector3 endPos, Color color)
 {
-    // WARNING: Be careful with internal buffer vertex alignment
-    // when using RL_LINES or RL_TRIANGLES, data is aligned to fit
-    // lines-triangles-quads in the same indexed buffers!!!
-    //rlCheckRenderBatchLimit(8);
-
     rlBegin(RL_LINES);
         rlColor4ub(color.r, color.g, color.b, color.a);
         rlVertex3f(startPos.x, startPos.y, startPos.z);
@@ -164,8 +173,6 @@ void DrawLine3D(Vector3 startPos, Vector3 endPos, Color color)
 // Draw a point in 3D space, actually a small line
 void DrawPoint3D(Vector3 position, Color color)
 {
-    //rlCheckRenderBatchLimit(8);
-
     rlPushMatrix();
         rlTranslatef(position.x, position.y, position.z);
         rlBegin(RL_LINES);
@@ -179,8 +186,6 @@ void DrawPoint3D(Vector3 position, Color color)
 // Draw a circle in 3D world space
 void DrawCircle3D(Vector3 center, float radius, Vector3 rotationAxis, float rotationAngle, Color color)
 {
-    //rlCheckRenderBatchLimit(2*36);
-
     rlPushMatrix();
         rlTranslatef(center.x, center.y, center.z);
         rlRotatef(rotationAngle, rotationAxis.x, rotationAxis.y, rotationAxis.z);
@@ -200,8 +205,6 @@ void DrawCircle3D(Vector3 center, float radius, Vector3 rotationAxis, float rota
 // Draw a color-filled triangle (vertex in counter-clockwise order!)
 void DrawTriangle3D(Vector3 v1, Vector3 v2, Vector3 v3, Color color)
 {
-    //rlCheckRenderBatchLimit(8);
-
     rlBegin(RL_TRIANGLES);
         rlColor4ub(color.r, color.g, color.b, color.a);
         rlVertex3f(v1.x, v1.y, v1.z);
@@ -213,30 +216,27 @@ void DrawTriangle3D(Vector3 v1, Vector3 v2, Vector3 v3, Color color)
 // Draw a triangle strip defined by points
 void DrawTriangleStrip3D(Vector3 *points, int pointCount, Color color)
 {
-    if (pointCount >= 3)
-    {
-        //rlCheckRenderBatchLimit(3*(pointCount - 2));
+    if (pointCount < 3) return;
 
-        rlBegin(RL_TRIANGLES);
-            rlColor4ub(color.r, color.g, color.b, color.a);
+    rlBegin(RL_TRIANGLES);
+        rlColor4ub(color.r, color.g, color.b, color.a);
 
-            for (int i = 2; i < pointCount; i++)
+        for (int i = 2; i < pointCount; i++)
+        {
+            if ((i%2) == 0)
             {
-                if ((i%2) == 0)
-                {
-                    rlVertex3f(points[i].x, points[i].y, points[i].z);
-                    rlVertex3f(points[i - 2].x, points[i - 2].y, points[i - 2].z);
-                    rlVertex3f(points[i - 1].x, points[i - 1].y, points[i - 1].z);
-                }
-                else
-                {
-                    rlVertex3f(points[i].x, points[i].y, points[i].z);
-                    rlVertex3f(points[i - 1].x, points[i - 1].y, points[i - 1].z);
-                    rlVertex3f(points[i - 2].x, points[i - 2].y, points[i - 2].z);
-                }
+                rlVertex3f(points[i].x, points[i].y, points[i].z);
+                rlVertex3f(points[i - 2].x, points[i - 2].y, points[i - 2].z);
+                rlVertex3f(points[i - 1].x, points[i - 1].y, points[i - 1].z);
             }
-        rlEnd();
-    }
+            else
+            {
+                rlVertex3f(points[i].x, points[i].y, points[i].z);
+                rlVertex3f(points[i - 1].x, points[i - 1].y, points[i - 1].z);
+                rlVertex3f(points[i - 2].x, points[i - 2].y, points[i - 2].z);
+            }
+        }
+    rlEnd();
 }
 
 // Draw cube
@@ -246,8 +246,6 @@ void DrawCube(Vector3 position, float width, float height, float length, Color c
     float x = 0.0f;
     float y = 0.0f;
     float z = 0.0f;
-
-    //rlCheckRenderBatchLimit(36);
 
     rlPushMatrix();
         // NOTE: Transformation is applied in inverse order (scale -> rotate -> translate)
@@ -328,65 +326,67 @@ void DrawCubeWires(Vector3 position, float width, float height, float length, Co
     float y = 0.0f;
     float z = 0.0f;
 
-    //rlCheckRenderBatchLimit(36);
-
     rlPushMatrix();
         rlTranslatef(position.x, position.y, position.z);
 
         rlBegin(RL_LINES);
             rlColor4ub(color.r, color.g, color.b, color.a);
 
-            // Front face -----------------------------------------------------
+            // Front face
+            //------------------------------------------------------------------
             // Bottom line
-            rlVertex3f(x-width/2, y-height/2, z+length/2);  // Bottom left
-            rlVertex3f(x+width/2, y-height/2, z+length/2);  // Bottom right
+            rlVertex3f(x - width/2, y - height/2, z + length/2);  // Bottom left
+            rlVertex3f(x + width/2, y - height/2, z + length/2);  // Bottom right
 
             // Left line
-            rlVertex3f(x+width/2, y-height/2, z+length/2);  // Bottom right
-            rlVertex3f(x+width/2, y+height/2, z+length/2);  // Top right
+            rlVertex3f(x + width/2, y - height/2, z + length/2);  // Bottom right
+            rlVertex3f(x + width/2, y + height/2, z + length/2);  // Top right
 
             // Top line
-            rlVertex3f(x+width/2, y+height/2, z+length/2);  // Top right
-            rlVertex3f(x-width/2, y+height/2, z+length/2);  // Top left
+            rlVertex3f(x + width/2, y + height/2, z + length/2);  // Top right
+            rlVertex3f(x - width/2, y + height/2, z + length/2);  // Top left
 
             // Right line
-            rlVertex3f(x-width/2, y+height/2, z+length/2);  // Top left
-            rlVertex3f(x-width/2, y-height/2, z+length/2);  // Bottom left
+            rlVertex3f(x - width/2, y + height/2, z + length/2);  // Top left
+            rlVertex3f(x - width/2, y - height/2, z + length/2);  // Bottom left
 
-            // Back face ------------------------------------------------------
+            // Back face
+            //------------------------------------------------------------------
             // Bottom line
-            rlVertex3f(x-width/2, y-height/2, z-length/2);  // Bottom left
-            rlVertex3f(x+width/2, y-height/2, z-length/2);  // Bottom right
+            rlVertex3f(x - width/2, y - height/2, z - length/2);  // Bottom left
+            rlVertex3f(x + width/2, y - height/2, z - length/2);  // Bottom right
 
             // Left line
-            rlVertex3f(x+width/2, y-height/2, z-length/2);  // Bottom right
-            rlVertex3f(x+width/2, y+height/2, z-length/2);  // Top right
+            rlVertex3f(x + width/2, y - height/2, z - length/2);  // Bottom right
+            rlVertex3f(x + width/2, y + height/2, z - length/2);  // Top right
 
             // Top line
-            rlVertex3f(x+width/2, y+height/2, z-length/2);  // Top right
-            rlVertex3f(x-width/2, y+height/2, z-length/2);  // Top left
+            rlVertex3f(x + width/2, y + height/2, z - length/2);  // Top right
+            rlVertex3f(x - width/2, y + height/2, z - length/2);  // Top left
 
             // Right line
-            rlVertex3f(x-width/2, y+height/2, z-length/2);  // Top left
-            rlVertex3f(x-width/2, y-height/2, z-length/2);  // Bottom left
+            rlVertex3f(x - width/2, y + height/2, z - length/2);  // Top left
+            rlVertex3f(x - width/2, y - height/2, z - length/2);  // Bottom left
 
-            // Top face -------------------------------------------------------
+            // Top face
+            //------------------------------------------------------------------
             // Left line
-            rlVertex3f(x-width/2, y+height/2, z+length/2);  // Top left front
-            rlVertex3f(x-width/2, y+height/2, z-length/2);  // Top left back
+            rlVertex3f(x - width/2, y + height/2, z + length/2);  // Top left front
+            rlVertex3f(x - width/2, y + height/2, z - length/2);  // Top left back
 
             // Right line
-            rlVertex3f(x+width/2, y+height/2, z+length/2);  // Top right front
-            rlVertex3f(x+width/2, y+height/2, z-length/2);  // Top right back
+            rlVertex3f(x + width/2, y + height/2, z + length/2);  // Top right front
+            rlVertex3f(x + width/2, y + height/2, z - length/2);  // Top right back
 
-            // Bottom face  ---------------------------------------------------
+            // Bottom face
+            //------------------------------------------------------------------
             // Left line
-            rlVertex3f(x-width/2, y-height/2, z+length/2);  // Top left front
-            rlVertex3f(x-width/2, y-height/2, z-length/2);  // Top left back
+            rlVertex3f(x - width/2, y - height/2, z + length/2);  // Top left front
+            rlVertex3f(x - width/2, y - height/2, z - length/2);  // Top left back
 
             // Right line
-            rlVertex3f(x+width/2, y-height/2, z+length/2);  // Top right front
-            rlVertex3f(x+width/2, y-height/2, z-length/2);  // Top right back
+            rlVertex3f(x + width/2, y - height/2, z + length/2);  // Top right front
+            rlVertex3f(x + width/2, y - height/2, z - length/2);  // Top right back
         rlEnd();
     rlPopMatrix();
 }
@@ -405,8 +405,6 @@ void DrawCubeTexture(Texture2D texture, Vector3 position, float width, float hei
     float y = position.y;
     float z = position.z;
 
-    //rlCheckRenderBatchLimit(36);
-
     rlSetTexture(texture.id);
 
     //rlPushMatrix();
@@ -418,37 +416,37 @@ void DrawCubeTexture(Texture2D texture, Vector3 position, float width, float hei
         rlBegin(RL_QUADS);
             rlColor4ub(color.r, color.g, color.b, color.a);
             // Front Face
-            rlNormal3f(0.0f, 0.0f, 1.0f);                  // Normal Pointing Towards Viewer
+            rlNormal3f(0.0f, 0.0f, 1.0f);       // Normal Pointing Towards Viewer
             rlTexCoord2f(0.0f, 0.0f); rlVertex3f(x - width/2, y - height/2, z + length/2);  // Bottom Left Of The Texture and Quad
             rlTexCoord2f(1.0f, 0.0f); rlVertex3f(x + width/2, y - height/2, z + length/2);  // Bottom Right Of The Texture and Quad
             rlTexCoord2f(1.0f, 1.0f); rlVertex3f(x + width/2, y + height/2, z + length/2);  // Top Right Of The Texture and Quad
             rlTexCoord2f(0.0f, 1.0f); rlVertex3f(x - width/2, y + height/2, z + length/2);  // Top Left Of The Texture and Quad
             // Back Face
-            rlNormal3f(0.0f, 0.0f, - 1.0f);                  // Normal Pointing Away From Viewer
+            rlNormal3f(0.0f, 0.0f, - 1.0f);     // Normal Pointing Away From Viewer
             rlTexCoord2f(1.0f, 0.0f); rlVertex3f(x - width/2, y - height/2, z - length/2);  // Bottom Right Of The Texture and Quad
             rlTexCoord2f(1.0f, 1.0f); rlVertex3f(x - width/2, y + height/2, z - length/2);  // Top Right Of The Texture and Quad
             rlTexCoord2f(0.0f, 1.0f); rlVertex3f(x + width/2, y + height/2, z - length/2);  // Top Left Of The Texture and Quad
             rlTexCoord2f(0.0f, 0.0f); rlVertex3f(x + width/2, y - height/2, z - length/2);  // Bottom Left Of The Texture and Quad
             // Top Face
-            rlNormal3f(0.0f, 1.0f, 0.0f);                  // Normal Pointing Up
+            rlNormal3f(0.0f, 1.0f, 0.0f);       // Normal Pointing Up
             rlTexCoord2f(0.0f, 1.0f); rlVertex3f(x - width/2, y + height/2, z - length/2);  // Top Left Of The Texture and Quad
             rlTexCoord2f(0.0f, 0.0f); rlVertex3f(x - width/2, y + height/2, z + length/2);  // Bottom Left Of The Texture and Quad
             rlTexCoord2f(1.0f, 0.0f); rlVertex3f(x + width/2, y + height/2, z + length/2);  // Bottom Right Of The Texture and Quad
             rlTexCoord2f(1.0f, 1.0f); rlVertex3f(x + width/2, y + height/2, z - length/2);  // Top Right Of The Texture and Quad
             // Bottom Face
-            rlNormal3f(0.0f, - 1.0f, 0.0f);                  // Normal Pointing Down
+            rlNormal3f(0.0f, - 1.0f, 0.0f);     // Normal Pointing Down
             rlTexCoord2f(1.0f, 1.0f); rlVertex3f(x - width/2, y - height/2, z - length/2);  // Top Right Of The Texture and Quad
             rlTexCoord2f(0.0f, 1.0f); rlVertex3f(x + width/2, y - height/2, z - length/2);  // Top Left Of The Texture and Quad
             rlTexCoord2f(0.0f, 0.0f); rlVertex3f(x + width/2, y - height/2, z + length/2);  // Bottom Left Of The Texture and Quad
             rlTexCoord2f(1.0f, 0.0f); rlVertex3f(x - width/2, y - height/2, z + length/2);  // Bottom Right Of The Texture and Quad
             // Right face
-            rlNormal3f(1.0f, 0.0f, 0.0f);                  // Normal Pointing Right
+            rlNormal3f(1.0f, 0.0f, 0.0f);       // Normal Pointing Right
             rlTexCoord2f(1.0f, 0.0f); rlVertex3f(x + width/2, y - height/2, z - length/2);  // Bottom Right Of The Texture and Quad
             rlTexCoord2f(1.0f, 1.0f); rlVertex3f(x + width/2, y + height/2, z - length/2);  // Top Right Of The Texture and Quad
             rlTexCoord2f(0.0f, 1.0f); rlVertex3f(x + width/2, y + height/2, z + length/2);  // Top Left Of The Texture and Quad
             rlTexCoord2f(0.0f, 0.0f); rlVertex3f(x + width/2, y - height/2, z + length/2);  // Bottom Left Of The Texture and Quad
             // Left Face
-            rlNormal3f( - 1.0f, 0.0f, 0.0f);                  // Normal Pointing Left
+            rlNormal3f( - 1.0f, 0.0f, 0.0f);    // Normal Pointing Left
             rlTexCoord2f(0.0f, 0.0f); rlVertex3f(x - width/2, y - height/2, z - length/2);  // Bottom Left Of The Texture and Quad
             rlTexCoord2f(1.0f, 0.0f); rlVertex3f(x - width/2, y - height/2, z + length/2);  // Bottom Right Of The Texture and Quad
             rlTexCoord2f(1.0f, 1.0f); rlVertex3f(x - width/2, y + height/2, z + length/2);  // Top Right Of The Texture and Quad
@@ -467,8 +465,6 @@ void DrawCubeTextureRec(Texture2D texture, Rectangle source, Vector3 position, f
     float z = position.z;
     float texWidth = (float)texture.width;
     float texHeight = (float)texture.height;
-
-    //rlCheckRenderBatchLimit(36);
 
     rlSetTexture(texture.id);
 
@@ -555,9 +551,6 @@ void DrawSphere(Vector3 centerPos, float radius, Color color)
 // Draw sphere with extended parameters
 void DrawSphereEx(Vector3 centerPos, float radius, int rings, int slices, Color color)
 {
-    //int numVertex = (rings + 2)*slices*6;
-    //rlCheckRenderBatchLimit(numVertex);
-
     rlPushMatrix();
         // NOTE: Transformation is applied in inverse order (scale -> translate)
         rlTranslatef(centerPos.x, centerPos.y, centerPos.z);
@@ -598,9 +591,6 @@ void DrawSphereEx(Vector3 centerPos, float radius, int rings, int slices, Color 
 // Draw sphere wires
 void DrawSphereWires(Vector3 centerPos, float radius, int rings, int slices, Color color)
 {
-    //int numVertex = (rings + 2)*slices*6;
-    //rlCheckRenderBatchLimit(numVertex);
-
     rlPushMatrix();
         // NOTE: Transformation is applied in inverse order (scale -> translate)
         rlTranslatef(centerPos.x, centerPos.y, centerPos.z);
@@ -644,9 +634,6 @@ void DrawSphereWires(Vector3 centerPos, float radius, int rings, int slices, Col
 void DrawCylinder(Vector3 position, float radiusTop, float radiusBottom, float height, int sides, Color color)
 {
     if (sides < 3) sides = 3;
-
-    //int numVertex = sides*6;
-    //rlCheckRenderBatchLimit(numVertex);
 
     rlPushMatrix();
         rlTranslatef(position.x, position.y, position.z);
@@ -704,9 +691,6 @@ void DrawCylinderEx(Vector3 startPos, Vector3 endPos, float startRadius, float e
 {
     if (sides < 3) sides = 3;
 
-    //int numVertex = sides*6;
-    //rlCheckRenderBatchLimit(numVertex);
-
     Vector3 direction = { endPos.x - startPos.x, endPos.y - startPos.y, endPos.z - startPos.z };
     if ((direction.x == 0) && (direction.y == 0) && (direction.z == 0)) return;
 
@@ -763,9 +747,6 @@ void DrawCylinderWires(Vector3 position, float radiusTop, float radiusBottom, fl
 {
     if (sides < 3) sides = 3;
 
-    //int numVertex = sides*8;
-    //rlCheckRenderBatchLimit(numVertex);
-
     rlPushMatrix();
         rlTranslatef(position.x, position.y, position.z);
 
@@ -796,9 +777,6 @@ void DrawCylinderWires(Vector3 position, float radiusTop, float radiusBottom, fl
 void DrawCylinderWiresEx(Vector3 startPos, Vector3 endPos, float startRadius, float endRadius, int sides, Color color)
 {
     if (sides < 3) sides = 3;
-
-    //int numVertex = sides*6;
-    //rlCheckRenderBatchLimit(numVertex);
 
     Vector3 direction = { endPos.x - startPos.x, endPos.y - startPos.y, endPos.z - startPos.z };
     if ((direction.x == 0) && (direction.y == 0) && (direction.z == 0))return;
@@ -839,12 +817,9 @@ void DrawCylinderWiresEx(Vector3 startPos, Vector3 endPos, float startRadius, fl
     rlEnd();
 }
 
-
 // Draw a plane
 void DrawPlane(Vector3 centerPos, Vector2 size, Color color)
 {
-    //rlCheckRenderBatchLimit(4);
-
     // NOTE: Plane is always created on XZ ground
     rlPushMatrix();
         rlTranslatef(centerPos.x, centerPos.y, centerPos.z);
@@ -880,8 +855,6 @@ void DrawRay(Ray ray, Color color)
 void DrawGrid(int slices, float spacing)
 {
     int halfSlices = slices/2;
-
-    //rlCheckRenderBatchLimit((slices + 2)*4);
 
     rlBegin(RL_LINES);
         for (int i = -halfSlices; i <= halfSlices; i++)
@@ -926,6 +899,9 @@ Model LoadModel(const char *fileName)
 #endif
 #if defined(SUPPORT_FILEFORMAT_VOX)
     if (IsFileExtension(fileName, ".vox")) model = LoadVOX(fileName);
+#endif
+#if defined(SUPPORT_FILEFORMAT_M3D)
+    if (IsFileExtension(fileName, ".m3d")) model = LoadM3D(fileName);
 #endif
 
     // Make sure model transform is set to identity matrix!
@@ -1100,7 +1076,7 @@ void UploadMesh(Mesh *mesh, bool dynamic)
     rlSetVertexAttribute(1, 2, RL_FLOAT, 0, 0, 0);
     rlEnableVertexAttribute(1);
 
-    // WARNING: When setting default vertex attribute values, the values for each generic vertex attribute 
+    // WARNING: When setting default vertex attribute values, the values for each generic vertex attribute
     // is part of current state and it is maintained even if a different program object is used
 
     if (mesh->normals != NULL)
@@ -1362,7 +1338,7 @@ void DrawMesh(Mesh mesh, Material material, Matrix transform)
         if (mesh.indices != NULL) rlEnableVertexBufferElement(mesh.vboId[6]);
     }
 
-    // WARNING: Disable vertex attribute color input if mesh can not provide that data (despite location being enabled in shader) 
+    // WARNING: Disable vertex attribute color input if mesh can not provide that data (despite location being enabled in shader)
     if (mesh.vboId[3] == 0) rlDisableVertexAttribute(material.shader.locs[SHADER_LOC_VERTEX_COLOR]);
 
     int eyeCount = 1;
@@ -1583,7 +1559,7 @@ void DrawMeshInstanced(Mesh mesh, Material material, const Matrix *transforms, i
         if (mesh.indices != NULL) rlEnableVertexBufferElement(mesh.vboId[6]);
     }
 
-    // WARNING: Disable vertex attribute color input if mesh can not provide that data (despite location being enabled in shader) 
+    // WARNING: Disable vertex attribute color input if mesh can not provide that data (despite location being enabled in shader)
     if (mesh.vboId[3] == 0) rlDisableVertexAttribute(material.shader.locs[SHADER_LOC_VERTEX_COLOR]);
 
     int eyeCount = 1;
@@ -1841,6 +1817,9 @@ ModelAnimation *LoadModelAnimations(const char *fileName, unsigned int *animCoun
 
 #if defined(SUPPORT_FILEFORMAT_IQM)
     if (IsFileExtension(fileName, ".iqm")) animations = LoadModelAnimationsIQM(fileName, animCount);
+#endif
+#if defined(SUPPORT_FILEFORMAT_M3D)
+    if (IsFileExtension(fileName, ".m3d")) animations = LoadModelAnimationsM3D(fileName, animCount);
 #endif
 #if defined(SUPPORT_FILEFORMAT_GLTF)
     //if (IsFileExtension(fileName, ".gltf;.glb")) animations = LoadModelAnimationGLTF(fileName, animCount);
@@ -3401,8 +3380,6 @@ void DrawBillboardPro(Camera camera, Texture2D texture, Rectangle source, Vector
     bottomRight = Vector3Add(bottomRight, position);
     bottomLeft = Vector3Add(bottomLeft, position);
 
-    rlCheckRenderBatchLimit(8);
-
     rlSetTexture(texture.id);
 
     rlBegin(RL_QUADS);
@@ -4282,6 +4259,7 @@ static Model LoadIQM(const char *fileName)
     RL_FREE(blendi);
     RL_FREE(blendw);
     RL_FREE(ijoint);
+    RL_FREE(color);
 
     return model;
 }
@@ -5098,6 +5076,416 @@ static Model LoadVOX(const char *fileName)
     UnloadFileData(fileData);
 
     return model;
+}
+#endif
+
+#if defined(SUPPORT_FILEFORMAT_M3D)
+// Hook LoadFileData()/UnloadFileData() calls to M3D loaders
+unsigned char *m3d_loaderhook(char *fn, unsigned int *len) { return LoadFileData((const char *)fn, len); }
+void m3d_freehook(void *data) { UnloadFileData((unsigned char *)data); }
+
+// Load M3D mesh data
+static Model LoadM3D(const char *fileName)
+{
+    Model model = { 0 };
+
+    m3d_t *m3d = NULL;
+    m3dp_t *prop = NULL;
+    unsigned int bytesRead = 0;
+    unsigned char *fileData = LoadFileData(fileName, &bytesRead);
+    int i, j, k, l, n, mi = -2;
+
+    if (fileData != NULL)
+    {
+        m3d = m3d_load(fileData, m3d_loaderhook, m3d_freehook, NULL);
+
+        if (!m3d || M3D_ERR_ISFATAL(m3d->errcode))
+        {
+            TRACELOG(LOG_WARNING, "MODEL: [%s] Failed to load M3D data, error code %d", fileName, m3d ? m3d->errcode : -2);
+            if (m3d) m3d_free(m3d);
+            UnloadFileData(fileData);
+            return model;
+        }
+        else TRACELOG(LOG_INFO, "MODEL: [%s] M3D data loaded successfully: %i faces/%i materials", fileName, m3d->numface, m3d->nummaterial);
+
+        // no face? this is probably just a material library
+        if (!m3d->numface)
+        {
+            m3d_free(m3d);
+            UnloadFileData(fileData);
+            return model;
+        }
+
+        if (m3d->nummaterial > 0)
+        {
+            model.meshCount = model.materialCount = m3d->nummaterial;
+            TRACELOG(LOG_INFO, "MODEL: model has %i material meshes", model.materialCount);
+        }
+        else
+        {
+            model.meshCount = model.materialCount = 1;
+            TRACELOG(LOG_INFO, "MODEL: No materials, putting all meshes in a default material");
+        }
+
+        model.meshes = (Mesh *)RL_CALLOC(model.meshCount, sizeof(Mesh));
+        model.meshMaterial = (int *)RL_CALLOC(model.meshCount, sizeof(int));
+        model.materials = (Material *)RL_CALLOC(model.materialCount + 1, sizeof(Material));
+
+        // Map no material to index 0 with default shader, everything else materialid + 1
+        model.materials[0] = LoadMaterialDefault();
+
+        for (i = l = 0, k = -1; i < m3d->numface; i++, l++)
+        {
+            // Materials are grouped together
+            if (mi != m3d->face[i].materialid)
+            {
+                // there should be only one material switch per material kind, but be bulletproof for unoptimal model files
+                if (k + 1 >= model.meshCount)
+                {
+                    model.meshCount++;
+                    model.meshes = (Mesh *)RL_REALLOC(model.meshes, model.meshCount*sizeof(Mesh));
+                    memset(&model.meshes[model.meshCount - 1], 0, sizeof(Mesh));
+                    model.meshMaterial = (int *)RL_REALLOC(model.meshMaterial, model.meshCount*sizeof(int));
+                }
+
+                k++;
+                mi = m3d->face[i].materialid;
+
+                for (j = i, l = 0; (j < m3d->numface) && (mi == m3d->face[j].materialid); j++, l++);
+
+                model.meshes[k].vertexCount = l*3;
+                model.meshes[k].triangleCount = l;
+                model.meshes[k].vertices = (float *)RL_CALLOC(model.meshes[k].vertexCount*3, sizeof(float));
+                model.meshes[k].texcoords = (float *)RL_CALLOC(model.meshes[k].vertexCount*2, sizeof(float));
+                model.meshes[k].normals = (float *)RL_CALLOC(model.meshes[k].vertexCount*3, sizeof(float));
+                // without material, we rely on vertex colors
+                if (mi == M3D_UNDEF && model.meshes[k].colors == NULL)
+                {
+                    model.meshes[k].colors = RL_CALLOC(model.meshes[k].vertexCount*4, sizeof(unsigned char));
+                    for (j = 0; j < model.meshes[k].vertexCount*4; j += 4) memcpy(&model.meshes[k].colors[j], &WHITE, 4);
+                }
+                if (m3d->numbone && m3d->numskin)
+                {
+                    model.meshes[k].boneIds = (unsigned char *)RL_CALLOC(model.meshes[k].vertexCount*4, sizeof(unsigned char));
+                    model.meshes[k].boneWeights = (float *)RL_CALLOC(model.meshes[k].vertexCount*4, sizeof(float));
+                    model.meshes[k].animVertices = (float *)RL_CALLOC(model.meshes[k].vertexCount*3, sizeof(float));
+                    model.meshes[k].animNormals = (float *)RL_CALLOC(model.meshes[k].vertexCount*3, sizeof(float));
+                }
+                model.meshMaterial[k] = mi + 1;
+                l = 0;
+            }
+
+            // Process meshes per material, add triangles
+            model.meshes[k].vertices[l * 9 + 0] = m3d->vertex[m3d->face[i].vertex[0]].x*m3d->scale;
+            model.meshes[k].vertices[l * 9 + 1] = m3d->vertex[m3d->face[i].vertex[0]].y*m3d->scale;
+            model.meshes[k].vertices[l * 9 + 2] = m3d->vertex[m3d->face[i].vertex[0]].z*m3d->scale;
+            model.meshes[k].vertices[l * 9 + 3] = m3d->vertex[m3d->face[i].vertex[1]].x*m3d->scale;
+            model.meshes[k].vertices[l * 9 + 4] = m3d->vertex[m3d->face[i].vertex[1]].y*m3d->scale;
+            model.meshes[k].vertices[l * 9 + 5] = m3d->vertex[m3d->face[i].vertex[1]].z*m3d->scale;
+            model.meshes[k].vertices[l * 9 + 6] = m3d->vertex[m3d->face[i].vertex[2]].x*m3d->scale;
+            model.meshes[k].vertices[l * 9 + 7] = m3d->vertex[m3d->face[i].vertex[2]].y*m3d->scale;
+            model.meshes[k].vertices[l * 9 + 8] = m3d->vertex[m3d->face[i].vertex[2]].z*m3d->scale;
+
+            if (mi == M3D_UNDEF)
+            {
+                // without vertex color (full transparency), we use the default color
+                if (m3d->vertex[m3d->face[i].vertex[0]].color & 0xFF000000)
+                    memcpy(&model.meshes[k].colors[l * 12 + 0], &m3d->vertex[m3d->face[i].vertex[0]].color, 4);
+                if (m3d->vertex[m3d->face[i].vertex[1]].color & 0xFF000000)
+                    memcpy(&model.meshes[k].colors[l * 12 + 4], &m3d->vertex[m3d->face[i].vertex[1]].color, 4);
+                if (m3d->vertex[m3d->face[i].vertex[2]].color & 0xFF000000)
+                    memcpy(&model.meshes[k].colors[l * 12 + 8], &m3d->vertex[m3d->face[i].vertex[2]].color, 4);
+            }
+
+            if (m3d->face[i].texcoord[0] != M3D_UNDEF)
+            {
+                model.meshes[k].texcoords[l * 6 + 0] = m3d->tmap[m3d->face[i].texcoord[0]].u;
+                model.meshes[k].texcoords[l * 6 + 1] = 1.0 - m3d->tmap[m3d->face[i].texcoord[0]].v;
+                model.meshes[k].texcoords[l * 6 + 2] = m3d->tmap[m3d->face[i].texcoord[1]].u;
+                model.meshes[k].texcoords[l * 6 + 3] = 1.0 - m3d->tmap[m3d->face[i].texcoord[1]].v;
+                model.meshes[k].texcoords[l * 6 + 4] = m3d->tmap[m3d->face[i].texcoord[2]].u;
+                model.meshes[k].texcoords[l * 6 + 5] = 1.0 - m3d->tmap[m3d->face[i].texcoord[2]].v;
+            }
+
+            if (m3d->face[i].normal[0] != M3D_UNDEF)
+            {
+                model.meshes[k].normals[l * 9 + 0] = m3d->vertex[m3d->face[i].normal[0]].x;
+                model.meshes[k].normals[l * 9 + 1] = m3d->vertex[m3d->face[i].normal[0]].y;
+                model.meshes[k].normals[l * 9 + 2] = m3d->vertex[m3d->face[i].normal[0]].z;
+                model.meshes[k].normals[l * 9 + 3] = m3d->vertex[m3d->face[i].normal[1]].x;
+                model.meshes[k].normals[l * 9 + 4] = m3d->vertex[m3d->face[i].normal[1]].y;
+                model.meshes[k].normals[l * 9 + 5] = m3d->vertex[m3d->face[i].normal[1]].z;
+                model.meshes[k].normals[l * 9 + 6] = m3d->vertex[m3d->face[i].normal[2]].x;
+                model.meshes[k].normals[l * 9 + 7] = m3d->vertex[m3d->face[i].normal[2]].y;
+                model.meshes[k].normals[l * 9 + 8] = m3d->vertex[m3d->face[i].normal[2]].z;
+            }
+
+            // Add skin (vertex / bone weight pairs)
+            if (m3d->numbone && m3d->numskin)
+            {
+                for (n = 0; n < 3; n++)
+                {
+                    int skinid = m3d->vertex[m3d->face[i].vertex[n]].skinid;
+
+                    // Check if there is a skin for this mesh, should be, just failsafe
+                    if (skinid != M3D_UNDEF && skinid < m3d->numskin)
+                    {
+                        for (j = 0; j < 4; j++)
+                        {
+                            model.meshes[k].boneIds[l*12 + n*4 + j] = m3d->skin[skinid].boneid[j];
+                            model.meshes[k].boneWeights[l*12 + n*4 + j] = m3d->skin[skinid].weight[j];
+                        }
+                    }
+                    else
+                    {
+                        // raylib does not handle boneless meshes with skeletal animations, so
+                        // we put all vertices without a bone into a special "no bone" bone
+                        model.meshes[k].boneIds[l * 12 + n * 4] = m3d->numbone;
+                        model.meshes[k].boneWeights[l * 12 + n * 4] = 1.0f;
+                    }
+                }
+            }
+        }
+
+        // Load materials
+        for (i = 0; i < m3d->nummaterial; i++)
+        {
+            model.materials[i + 1] = LoadMaterialDefault();
+
+            for (j = 0; j < m3d->material[i].numprop; j++)
+            {
+                prop = &m3d->material[i].prop[j];
+
+                switch (prop->type)
+                {
+                    case m3dp_Kd:
+                    {
+                        memcpy(&model.materials[i + 1].maps[MATERIAL_MAP_DIFFUSE].color, &prop->value.color, 4);
+                        model.materials[i + 1].maps[MATERIAL_MAP_DIFFUSE].value = 0.0f;
+                    } break;
+                    case m3dp_Ks:
+                    {
+                        memcpy(&model.materials[i + 1].maps[MATERIAL_MAP_SPECULAR].color, &prop->value.color, 4);
+                    } break;
+                    case m3dp_Ns:
+                    {
+                        model.materials[i + 1].maps[MATERIAL_MAP_SPECULAR].value = prop->value.fnum;
+                    } break;
+                    case m3dp_Ke:
+                    {
+                        memcpy(&model.materials[i + 1].maps[MATERIAL_MAP_EMISSION].color, &prop->value.color, 4);
+                        model.materials[i + 1].maps[MATERIAL_MAP_EMISSION].value = 0.0f;
+                    } break;
+                    case m3dp_Pm:
+                    {
+                        model.materials[i + 1].maps[MATERIAL_MAP_METALNESS].value = prop->value.fnum;
+                    } break;
+                    case m3dp_Pr:
+                    {
+                        model.materials[i + 1].maps[MATERIAL_MAP_ROUGHNESS].value = prop->value.fnum;
+                    } break;
+                    case m3dp_Ps:
+                    {
+                        model.materials[i + 1].maps[MATERIAL_MAP_NORMAL].color = WHITE;
+                        model.materials[i + 1].maps[MATERIAL_MAP_NORMAL].value = prop->value.fnum;
+                    } break;
+                    default:
+                    {
+                        if (prop->type >= 128)
+                        {
+                            Image image = { 0 };
+                            image.data = m3d->texture[prop->value.textureid].d;
+                            image.width = m3d->texture[prop->value.textureid].w;
+                            image.height = m3d->texture[prop->value.textureid].h;
+                            image.mipmaps = 1;
+                            image.format = (m3d->texture[prop->value.textureid].f == 4)? PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 :
+                                           ((m3d->texture[prop->value.textureid].f == 3)? PIXELFORMAT_UNCOMPRESSED_R8G8B8 :
+                                           ((m3d->texture[prop->value.textureid].f == 2)? PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA : PIXELFORMAT_UNCOMPRESSED_GRAYSCALE));
+
+                            switch (prop->type)
+                            {
+                                case m3dp_map_Kd: model.materials[i + 1].maps[MATERIAL_MAP_DIFFUSE].texture = LoadTextureFromImage(image); break;
+                                case m3dp_map_Ks: model.materials[i + 1].maps[MATERIAL_MAP_SPECULAR].texture = LoadTextureFromImage(image); break;
+                                case m3dp_map_Ke: model.materials[i + 1].maps[MATERIAL_MAP_EMISSION].texture = LoadTextureFromImage(image); break;
+                                case m3dp_map_Km: model.materials[i + 1].maps[MATERIAL_MAP_NORMAL].texture = LoadTextureFromImage(image); break;
+                                case m3dp_map_Ka: model.materials[i + 1].maps[MATERIAL_MAP_OCCLUSION].texture = LoadTextureFromImage(image); break;
+                                case m3dp_map_Pm: model.materials[i + 1].maps[MATERIAL_MAP_ROUGHNESS].texture = LoadTextureFromImage(image); break;
+                                default: break;
+                            }
+                        }
+                    } break;
+                }
+            }
+        }
+
+        // Load bones
+        if (m3d->numbone)
+        {
+            model.boneCount = m3d->numbone + 1;
+            model.bones = RL_CALLOC(model.boneCount, sizeof(BoneInfo));
+            model.bindPose = RL_CALLOC(model.boneCount, sizeof(Transform));
+
+            for (i = 0; i < m3d->numbone; i++)
+            {
+                model.bones[i].parent = m3d->bone[i].parent;
+                strncpy(model.bones[i].name, m3d->bone[i].name, sizeof(model.bones[i].name));
+                model.bindPose[i].translation.x = m3d->vertex[m3d->bone[i].pos].x*m3d->scale;
+                model.bindPose[i].translation.y = m3d->vertex[m3d->bone[i].pos].y*m3d->scale;
+                model.bindPose[i].translation.z = m3d->vertex[m3d->bone[i].pos].z*m3d->scale;
+                model.bindPose[i].rotation.x = m3d->vertex[m3d->bone[i].ori].x;
+                model.bindPose[i].rotation.y = m3d->vertex[m3d->bone[i].ori].y;
+                model.bindPose[i].rotation.z = m3d->vertex[m3d->bone[i].ori].z;
+                model.bindPose[i].rotation.w = m3d->vertex[m3d->bone[i].ori].w;
+                // TODO: if the orientation quaternion not normalized, then that's encoding scaling
+                model.bindPose[i].rotation = QuaternionNormalize(model.bindPose[i].rotation);
+                model.bindPose[i].scale.x = model.bindPose[i].scale.y = model.bindPose[i].scale.z = 1.0f;
+
+                // Child bones are stored in parent bone relative space, convert that into model space
+                if (model.bones[i].parent >= 0)
+                {
+                    model.bindPose[i].rotation = QuaternionMultiply(model.bindPose[model.bones[i].parent].rotation, model.bindPose[i].rotation);
+                    model.bindPose[i].translation = Vector3RotateByQuaternion(model.bindPose[i].translation, model.bindPose[model.bones[i].parent].rotation);
+                    model.bindPose[i].translation = Vector3Add(model.bindPose[i].translation, model.bindPose[model.bones[i].parent].translation);
+                    model.bindPose[i].scale = Vector3Multiply(model.bindPose[i].scale, model.bindPose[model.bones[i].parent].scale);
+                }
+            }
+
+            // Add a special "no bone" bone
+            model.bones[i].parent = -1;
+            strcpy(model.bones[i].name, "NO BONE");
+            model.bindPose[i].translation.x = 0.0f;
+            model.bindPose[i].translation.y = 0.0f;
+            model.bindPose[i].translation.z = 0.0f;
+            model.bindPose[i].rotation.x = 0.0f;
+            model.bindPose[i].rotation.y = 0.0f;
+            model.bindPose[i].rotation.z = 0.0f;
+            model.bindPose[i].rotation.w = 1.0f;
+            model.bindPose[i].scale.x = model.bindPose[i].scale.y = model.bindPose[i].scale.z = 1.0f;
+        }
+
+        // Load bone-pose default mesh into animation vertices. These will be updated when UpdateModelAnimation gets
+        // called, but not before, however DrawMesh uses these if they exists (so not good if they are left empty).
+        if (m3d->numbone && m3d->numskin)
+        {
+            for(i = 0; i < model.meshCount; i++)
+            {
+                memcpy(model.meshes[i].animVertices, model.meshes[i].vertices, model.meshes[i].vertexCount*3*sizeof(float));
+                memcpy(model.meshes[i].animNormals, model.meshes[i].normals, model.meshes[i].vertexCount*3*sizeof(float));
+            }
+        }
+
+        m3d_free(m3d);
+        UnloadFileData(fileData);
+    }
+
+    return model;
+}
+
+// Load M3D animation data
+#define M3D_ANIMDELAY 17    // that's roughly ~1000 msec / 60 FPS (16.666666* msec)
+static ModelAnimation *LoadModelAnimationsM3D(const char *fileName, unsigned int *animCount)
+{
+    m3d_t *m3d = NULL;
+    unsigned int bytesRead = 0;
+    unsigned char *fileData = LoadFileData(fileName, &bytesRead);
+    ModelAnimation *animations = NULL;
+    int i, j;
+
+    *animCount = 0;
+
+    if (fileData != NULL)
+    {
+        m3d = m3d_load(fileData, m3d_loaderhook, m3d_freehook, NULL);
+
+        if (!m3d || M3D_ERR_ISFATAL(m3d->errcode))
+        {
+            TRACELOG(LOG_WARNING, "MODEL: [%s] Failed to load M3D data, error code %d", fileName, m3d ? m3d->errcode : -2);
+            UnloadFileData(fileData);
+            return NULL;
+        }
+        else TRACELOG(LOG_INFO, "MODEL: [%s] M3D data loaded successfully: %i animations, %i bones, %i skins", fileName,
+            m3d->numaction, m3d->numbone, m3d->numskin);
+
+        // no animation or bone+skin?
+        if (!m3d->numaction || !m3d->numbone || !m3d->numskin)
+        {
+            m3d_free(m3d);
+            UnloadFileData(fileData);
+            return NULL;
+        }
+
+        animations = RL_MALLOC(m3d->numaction*sizeof(ModelAnimation));
+        *animCount = m3d->numaction;
+
+        for (unsigned int a = 0; a < m3d->numaction; a++)
+        {
+            animations[a].frameCount = m3d->action[a].durationmsec / M3D_ANIMDELAY;
+            animations[a].boneCount = m3d->numbone + 1;
+            animations[a].bones = RL_MALLOC((m3d->numbone + 1)*sizeof(BoneInfo));
+            animations[a].framePoses = RL_MALLOC(animations[a].frameCount*sizeof(Transform *));
+            // strncpy(animations[a].name, m3d->action[a].name, sizeof(animations[a].name));
+            TRACELOG(LOG_INFO, "MODEL: [%s] animation #%i: %i msec, %i frames", fileName, a, m3d->action[a].durationmsec, animations[a].frameCount);
+
+            for (i = 0; i < m3d->numbone; i++)
+            {
+                animations[a].bones[i].parent = m3d->bone[i].parent;
+                strncpy(animations[a].bones[i].name, m3d->bone[i].name, sizeof(animations[a].bones[i].name));
+            }
+
+            // A special, never transformed "no bone" bone, used for boneless vertices
+            animations[a].bones[i].parent = -1;
+            strcpy(animations[a].bones[i].name, "NO BONE");
+
+            // M3D stores frames at arbitrary intervals with sparse skeletons. We need full skeletons at
+            // regular intervals, so let the M3D SDK do the heavy lifting and calculate interpolated bones
+            for (i = 0; i < animations[a].frameCount; i++)
+            {
+                animations[a].framePoses[i] = RL_MALLOC((m3d->numbone + 1)*sizeof(Transform));
+
+                m3db_t *pose = m3d_pose(m3d, a, i * M3D_ANIMDELAY);
+                if (pose != NULL)
+                {
+                    for (j = 0; j < m3d->numbone; j++)
+                    {
+                        animations[a].framePoses[i][j].translation.x = m3d->vertex[pose[j].pos].x*m3d->scale;
+                        animations[a].framePoses[i][j].translation.y = m3d->vertex[pose[j].pos].y*m3d->scale;
+                        animations[a].framePoses[i][j].translation.z = m3d->vertex[pose[j].pos].z*m3d->scale;
+                        animations[a].framePoses[i][j].rotation.x = m3d->vertex[pose[j].ori].x;
+                        animations[a].framePoses[i][j].rotation.y = m3d->vertex[pose[j].ori].y;
+                        animations[a].framePoses[i][j].rotation.z = m3d->vertex[pose[j].ori].z;
+                        animations[a].framePoses[i][j].rotation.w = m3d->vertex[pose[j].ori].w;
+                        animations[a].framePoses[i][j].rotation = QuaternionNormalize(animations[a].framePoses[i][j].rotation);
+                        animations[a].framePoses[i][j].scale.x = animations[a].framePoses[i][j].scale.y = animations[a].framePoses[i][j].scale.z = 1.0f;
+
+                        // Child bones are stored in parent bone relative space, convert that into model space
+                        if (animations[a].bones[j].parent >= 0)
+                        {
+                            animations[a].framePoses[i][j].rotation = QuaternionMultiply(animations[a].framePoses[i][animations[a].bones[j].parent].rotation, animations[a].framePoses[i][j].rotation);
+                            animations[a].framePoses[i][j].translation = Vector3RotateByQuaternion(animations[a].framePoses[i][j].translation, animations[a].framePoses[i][animations[a].bones[j].parent].rotation);
+                            animations[a].framePoses[i][j].translation = Vector3Add(animations[a].framePoses[i][j].translation, animations[a].framePoses[i][animations[a].bones[j].parent].translation);
+                            animations[a].framePoses[i][j].scale = Vector3Multiply(animations[a].framePoses[i][j].scale, animations[a].framePoses[i][animations[a].bones[j].parent].scale);
+                        }
+                    }
+
+                    // Default transform for the "no bone" bone
+                    animations[a].framePoses[i][j].translation.x = 0.0f;
+                    animations[a].framePoses[i][j].translation.y = 0.0f;
+                    animations[a].framePoses[i][j].translation.z = 0.0f;
+                    animations[a].framePoses[i][j].rotation.x = 0.0f;
+                    animations[a].framePoses[i][j].rotation.y = 0.0f;
+                    animations[a].framePoses[i][j].rotation.z = 0.0f;
+                    animations[a].framePoses[i][j].rotation.w = 1.0f;
+                    animations[a].framePoses[i][j].scale.x = animations[a].framePoses[i][j].scale.y = animations[a].framePoses[i][j].scale.z = 1.0f;
+                    RL_FREE(pose);
+                }
+            }
+        }
+
+        m3d_free(m3d);
+        UnloadFileData(fileData);
+    }
+
+    return animations;
 }
 #endif
 
