@@ -8,6 +8,7 @@ pub fn addRaylib(b: *std.build.Builder, target: std.zig.CrossTarget) *std.build.
     const raylib_flags = &[_][]const u8{
         "-std=gnu99",
         "-DPLATFORM_DESKTOP",
+        "-D_GNU_SOURCE",
         "-DGL_SILENCE_DEPRECATION=199309L",
         "-fno-sanitize=undefined", // https://github.com/raysan5/raylib/issues/1891
     };
@@ -17,7 +18,7 @@ pub fn addRaylib(b: *std.build.Builder, target: std.zig.CrossTarget) *std.build.
     raylib.setBuildMode(mode);
     raylib.linkLibC();
 
-    raylib.addIncludeDir(srcdir ++ "/external/glfw/include");
+    raylib.addIncludePath(srcdir ++ "/external/glfw/include");
 
     raylib.addCSourceFiles(&.{
         srcdir ++ "/raudio.c",
@@ -35,7 +36,7 @@ pub fn addRaylib(b: *std.build.Builder, target: std.zig.CrossTarget) *std.build.
             raylib.linkSystemLibrary("winmm");
             raylib.linkSystemLibrary("gdi32");
             raylib.linkSystemLibrary("opengl32");
-            raylib.addIncludeDir("external/glfw/deps/mingw");
+            raylib.addIncludePath("external/glfw/deps/mingw");
         },
         .linux => {
             raylib.addCSourceFiles(&.{srcdir ++ "/rglfw.c"}, raylib_flags);

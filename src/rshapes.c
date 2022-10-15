@@ -104,21 +104,50 @@ void SetShapesTexture(Texture2D texture, Rectangle source)
 // Draw a pixel
 void DrawPixel(int posX, int posY, Color color)
 {
-    rlBegin(RL_LINES);
-        rlColor4ub(color.r, color.g, color.b, color.a);
-        rlVertex2f(posX, posY);
-        rlVertex2f(posX + 1, posY + 1);
-    rlEnd();
+  DrawPixelV((Vector2){ posX, posY }, color);
 }
 
 // Draw a pixel (Vector version)
 void DrawPixelV(Vector2 position, Color color)
 {
-    rlBegin(RL_LINES);
+#if defined(SUPPORT_QUADS_DRAW_MODE)
+    rlSetTexture(texShapes.id);
+
+    rlBegin(RL_QUADS);
+
+        rlNormal3f(0.0f, 0.0f, 1.0f);
         rlColor4ub(color.r, color.g, color.b, color.a);
+
+        rlTexCoord2f(texShapesRec.x/texShapes.width, texShapesRec.y/texShapes.height);
         rlVertex2f(position.x, position.y);
-        rlVertex2f(position.x + 1.0f, position.y + 1.0f);
+
+        rlTexCoord2f(texShapesRec.x/texShapes.width, (texShapesRec.y + texShapesRec.height)/texShapes.height);
+        rlVertex2f(position.x, position.y + 1);
+
+        rlTexCoord2f((texShapesRec.x + texShapesRec.width)/texShapes.width, (texShapesRec.y + texShapesRec.height)/texShapes.height);
+        rlVertex2f(position.x + 1, position.y + 1);
+
+        rlTexCoord2f((texShapesRec.x + texShapesRec.width)/texShapes.width, texShapesRec.y/texShapes.height);
+        rlVertex2f(position.x + 1, position.y);
+
     rlEnd();
+
+    rlSetTexture(0);
+#else
+    rlBegin(RL_TRIANGLES);
+
+        rlColor4ub(color.r, color.g, color.b, color.a);
+
+        rlVertex2f(position.x, position.y);
+        rlVertex2f(position.x, position.y + 1);
+        rlVertex2f(position.x + 1, position.y);
+
+        rlVertex2f(position.x + 1, position.y);
+        rlVertex2f(position.x, position.y + 1);
+        rlVertex2f(position.x + 1, position.y + 1);
+
+    rlEnd();
+#endif
 }
 
 // Draw a line
@@ -175,6 +204,8 @@ void DrawLineBezier(Vector2 startPos, Vector2 endPos, float thick, Color color)
         current.y = EaseCubicInOut((float)i, startPos.y, endPos.y - startPos.y, (float)BEZIER_LINE_DIVISIONS);
         current.x = previous.x + (endPos.x - startPos.x)/ (float)BEZIER_LINE_DIVISIONS;
 
+        // TODO: Avoid drawing the line by pieces, it generates gaps for big thicks,
+        // Custom "triangle-strip" implementation should be used, check DrawTriangleStrip() for reference
         DrawLineEx(previous, current, thick, color);
 
         previous = current;
@@ -201,6 +232,8 @@ void DrawLineBezierQuad(Vector2 startPos, Vector2 endPos, Vector2 controlPos, fl
         current.y = a*startPos.y + b*controlPos.y + c*endPos.y;
         current.x = a*startPos.x + b*controlPos.x + c*endPos.x;
 
+        // TODO: Avoid drawing the line by pieces, it generates gaps for big thicks,
+        // Custom "triangle-strip" implementation should be used, check DrawTriangleStrip() for reference
         DrawLineEx(previous, current, thick, color);
 
         previous = current;
@@ -227,6 +260,8 @@ void DrawLineBezierCubic(Vector2 startPos, Vector2 endPos, Vector2 startControlP
         current.y = a*startPos.y + b*startControlPos.y + c*endControlPos.y + d*endPos.y;
         current.x = a*startPos.x + b*startControlPos.x + c*endControlPos.x + d*endPos.x;
 
+        // TODO: Avoid drawing the line by pieces, it generates gaps for big thicks,
+        // Custom "triangle-strip" implementation should be used, check DrawTriangleStrip() for reference
         DrawLineEx(previous, current, thick, color);
 
         previous = current;
