@@ -7,7 +7,7 @@
 *   Example licensed under an unmodified zlib/libpng license, which is an OSI-certified,
 *   BSD-like license that allows static linking with closed source software
 *
-*   Copyright (c) 2015-2023 Ramon Santamaria (@raysan5)
+*   Copyright (c) 2015-2024 Ramon Santamaria (@raysan5)
 *
 ********************************************************************************************/
 
@@ -104,7 +104,7 @@ int main(void)
 bool SaveStorageValue(unsigned int position, int value)
 {
     bool success = false;
-    unsigned int dataSize = 0;
+    int dataSize = 0;
     unsigned int newDataSize = 0;
     unsigned char *fileData = LoadFileData(STORAGE_DATA_FILE, &dataSize);
     unsigned char *newFileData = NULL;
@@ -172,7 +172,7 @@ bool SaveStorageValue(unsigned int position, int value)
 int LoadStorageValue(unsigned int position)
 {
     int value = 0;
-    unsigned int dataSize = 0;
+    int dataSize = 0;
     unsigned char *fileData = LoadFileData(STORAGE_DATA_FILE, &dataSize);
 
     if (fileData != NULL)

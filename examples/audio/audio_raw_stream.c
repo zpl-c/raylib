@@ -9,7 +9,7 @@
 *   Example licensed under an unmodified zlib/libpng license, which is an OSI-certified,
 *   BSD-like license that allows static linking with closed source software
 *
-*   Copyright (c) 2015-2023 Ramon Santamaria (@raysan5) and James Hofmann (@triplefox)
+*   Copyright (c) 2015-2024 Ramon Santamaria (@raysan5) and James Hofmann (@triplefox)
 *
 ********************************************************************************************/
 
@@ -38,12 +38,11 @@ float sineIdx = 0.0f;
 void AudioInputCallback(void *buffer, unsigned int frames)
 {
     audioFrequency = frequency + (audioFrequency - frequency)*0.95f;
-    audioFrequency += 1.0f;
-    audioFrequency -= 1.0f;
+
     float incr = audioFrequency/44100.0f;
     short *d = (short *)buffer;
 
-    for (int i = 0; i < frames; i++)
+    for (unsigned int i = 0; i < frames; i++)
     {
         d[i] = (short)(32000.0f*sinf(2*PI*sineIdx));
         sineIdx += incr;

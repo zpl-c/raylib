@@ -11,22 +11,22 @@
 *       - Play/Stop/Pause/Resume loaded audio
 *
 *   CONFIGURATION:
+*       #define SUPPORT_MODULE_RAUDIO
+*           raudio module is included in the build
 *
-*   #define SUPPORT_MODULE_RAUDIO
-*       raudio module is included in the build
+*       #define RAUDIO_STANDALONE
+*           Define to use the module as standalone library (independently of raylib).
+*           Required types and functions are defined in the same module.
 *
-*   #define RAUDIO_STANDALONE
-*       Define to use the module as standalone library (independently of raylib).
-*       Required types and functions are defined in the same module.
-*
-*   #define SUPPORT_FILEFORMAT_WAV
-*   #define SUPPORT_FILEFORMAT_OGG
-*   #define SUPPORT_FILEFORMAT_XM
-*   #define SUPPORT_FILEFORMAT_MOD
-*   #define SUPPORT_FILEFORMAT_FLAC
-*   #define SUPPORT_FILEFORMAT_MP3
-*       Selected desired fileformats to be supported for loading. Some of those formats are
-*       supported by default, to remove support, just comment unrequired #define in this module
+*       #define SUPPORT_FILEFORMAT_WAV
+*       #define SUPPORT_FILEFORMAT_OGG
+*       #define SUPPORT_FILEFORMAT_MP3
+*       #define SUPPORT_FILEFORMAT_QOA
+*       #define SUPPORT_FILEFORMAT_FLAC
+*       #define SUPPORT_FILEFORMAT_XM
+*       #define SUPPORT_FILEFORMAT_MOD
+*           Selected desired fileformats to be supported for loading. Some of those formats are
+*           supported by default, to remove support, just comment unrequired #define in this module
 *
 *   DEPENDENCIES:
 *       miniaudio.h  - Audio device management lib (https://github.com/mackron/miniaudio)
@@ -41,7 +41,7 @@
 *       David Reid (github: @mackron) (Nov. 2017):
 *           - Complete port to miniaudio library
 *
-*       Joshua Reisenauer (github: @kd7tck) (2015)
+*       Joshua Reisenauer (github: @kd7tck) (2015):
 *           - XM audio module support (jar_xm)
 *           - MOD audio module support (jar_mod)
 *           - Mixing channels support
@@ -50,7 +50,7 @@
 *
 *   LICENSE: zlib/libpng
 *
-*   Copyright (c) 2013-2023 Ramon Santamaria (@raysan5)
+*   Copyright (c) 2013-2024 Ramon Santamaria (@raysan5)
 *
 *   This software is provided "as-is", without any express or implied warranty. In no event
 *   will the authors be held liable for any damages arising from the use of this software.
@@ -167,6 +167,14 @@ typedef struct tagBITMAPINFOHEADER {
 #define MA_NO_WAV
 #define MA_NO_FLAC
 #define MA_NO_MP3
+#define MA_NO_RESOURCE_MANAGER
+#define MA_NO_NODE_GRAPH
+#define MA_NO_ENGINE
+#define MA_NO_GENERATION
+
+// Threading model: Default: [0] COINIT_MULTITHREADED: COM calls objects on any thread (free threading)
+#define MA_COINIT_VALUE  2              // [2] COINIT_APARTMENTTHREADED: Each object has its own thread (apartment model)
+
 #define MINIAUDIO_IMPLEMENTATION
 //#define MA_DEBUG_OUTPUT
 #include "external/miniaudio.h"         // Audio device initialization and management
@@ -196,38 +204,6 @@ typedef struct tagBITMAPINFOHEADER {
     #endif
 #endif
 
-#if defined(SUPPORT_FILEFORMAT_OGG)
-    // TODO: Remap stb_vorbis malloc()/free() calls to RL_MALLOC/RL_FREE
-    #define STB_VORBIS_IMPLEMENTATION
-    #include "external/stb_vorbis.h"    // OGG loading functions
-#endif
-
-#if defined(SUPPORT_FILEFORMAT_XM)
-    #define JARXM_MALLOC RL_MALLOC
-    #define JARXM_FREE RL_FREE
-
-#if defined(_MSC_VER ) // jar xm has  warnings on windows, so disable them just for this file
-#pragma warning( push )
-#pragma warning( disable : 4244)
-#endif
-
-    #define JAR_XM_IMPLEMENTATION
-    #include "external/jar_xm.h"        // XM loading functions
-
-#if defined(_MSC_VER )
-#pragma warning( pop )
-#endif
-
-#endif
-
-#if defined(SUPPORT_FILEFORMAT_MOD)
-    #define JARMOD_MALLOC RL_MALLOC
-    #define JARMOD_FREE RL_FREE
-
-    #define JAR_MOD_IMPLEMENTATION
-    #include "external/jar_mod.h"       // MOD loading functions
-#endif
-
 #if defined(SUPPORT_FILEFORMAT_WAV)
     #define DRWAV_MALLOC RL_MALLOC
     #define DRWAV_REALLOC RL_REALLOC
@@ -235,6 +211,11 @@ typedef struct tagBITMAPINFOHEADER {
 
     #define DR_WAV_IMPLEMENTATION
     #include "external/dr_wav.h"        // WAV loading functions
+#endif
+
+#if defined(SUPPORT_FILEFORMAT_OGG)
+    // TODO: Remap stb_vorbis malloc()/free() calls to RL_MALLOC/RL_FREE
+    #include "external/stb_vorbis.c"    // OGG loading functions
 #endif
 
 #if defined(SUPPORT_FILEFORMAT_MP3)
@@ -246,6 +227,26 @@ typedef struct tagBITMAPINFOHEADER {
     #include "external/dr_mp3.h"        // MP3 loading functions
 #endif
 
+#if defined(SUPPORT_FILEFORMAT_QOA)
+    #define QOA_MALLOC RL_MALLOC
+    #define QOA_FREE RL_FREE
+
+    #if defined(_MSC_VER)           // Disable some MSVC warning
+        #pragma warning(push)
+        #pragma warning(disable : 4018)
+        #pragma warning(disable : 4267)
+        #pragma warning(disable : 4244)
+    #endif
+
+    #define QOA_IMPLEMENTATION
+    #include "external/qoa.h"           // QOA loading and saving functions
+    #include "external/qoaplay.c"       // QOA stream playing helper functions
+
+    #if defined(_MSC_VER)
+        #pragma warning(pop)        // Disable MSVC warning suppression
+    #endif
+#endif
+
 #if defined(SUPPORT_FILEFORMAT_FLAC)
     #define DRFLAC_MALLOC RL_MALLOC
     #define DRFLAC_REALLOC RL_REALLOC
@@ -254,6 +255,31 @@ typedef struct tagBITMAPINFOHEADER {
     #define DR_FLAC_IMPLEMENTATION
     #define DR_FLAC_NO_WIN32_IO
     #include "external/dr_flac.h"       // FLAC loading functions
+#endif
+
+#if defined(SUPPORT_FILEFORMAT_XM)
+    #define JARXM_MALLOC RL_MALLOC
+    #define JARXM_FREE RL_FREE
+
+    #if defined(_MSC_VER)           // Disable some MSVC warning
+        #pragma warning(push)
+        #pragma warning(disable : 4244)
+    #endif
+
+    #define JAR_XM_IMPLEMENTATION
+    #include "external/jar_xm.h"        // XM loading functions
+
+    #if defined(_MSC_VER)
+        #pragma warning(pop)        // Disable MSVC warning suppression
+    #endif
+#endif
+
+#if defined(SUPPORT_FILEFORMAT_MOD)
+    #define JARMOD_MALLOC RL_MALLOC
+    #define JARMOD_FREE RL_FREE
+
+    #define JAR_MOD_IMPLEMENTATION
+    #include "external/jar_mod.h"       // MOD loading functions
 #endif
 
 //----------------------------------------------------------------------------------
@@ -276,20 +302,6 @@ typedef struct tagBITMAPINFOHEADER {
 //----------------------------------------------------------------------------------
 // Types and Structures Definition
 //----------------------------------------------------------------------------------
-
-// Music context type
-// NOTE: Depends on data structure provided by the library
-// in charge of reading the different file types
-typedef enum {
-    MUSIC_AUDIO_NONE = 0,   // No audio context loaded
-    MUSIC_AUDIO_WAV,        // WAV audio context
-    MUSIC_AUDIO_OGG,        // OGG audio context
-    MUSIC_AUDIO_FLAC,       // FLAC audio context
-    MUSIC_AUDIO_MP3,        // MP3 audio context
-    MUSIC_MODULE_XM,        // XM module audio context
-    MUSIC_MODULE_MOD        // MOD module audio context
-} MusicContextType;
-
 #if defined(RAUDIO_STANDALONE)
 // Trace log level
 // NOTE: Organized by priority level
@@ -305,8 +317,22 @@ typedef enum {
 } TraceLogLevel;
 #endif
 
+// Music context type
+// NOTE: Depends on data structure provided by the library
+// in charge of reading the different file types
+typedef enum {
+    MUSIC_AUDIO_NONE = 0,   // No audio context loaded
+    MUSIC_AUDIO_WAV,        // WAV audio context
+    MUSIC_AUDIO_OGG,        // OGG audio context
+    MUSIC_AUDIO_FLAC,       // FLAC audio context
+    MUSIC_AUDIO_MP3,        // MP3 audio context
+    MUSIC_AUDIO_QOA,        // QOA audio context
+    MUSIC_MODULE_XM,        // XM module audio context
+    MUSIC_MODULE_MOD        // MOD module audio context
+} MusicContextType;
+
 // NOTE: Different logic is used when feeding data to the playback device
-// depending on whether or not data is streamed (Music vs Sound)
+// depending on whether data is streamed (Music vs Sound)
 typedef enum {
     AUDIO_BUFFER_USAGE_STATIC = 0,
     AUDIO_BUFFER_USAGE_STREAM
@@ -364,11 +390,7 @@ typedef struct AudioData {
         AudioBuffer *last;          // Pointer to last AudioBuffer in the list
         int defaultSize;            // Default audio buffer size for audio streams
     } Buffer;
-    struct {
-        unsigned int poolCounter;                               // AudioBuffer pointers pool counter
-        AudioBuffer *pool[MAX_AUDIO_BUFFER_POOL_CHANNELS];      // Multichannel AudioBuffer pointers pool
-        unsigned int channels[MAX_AUDIO_BUFFER_POOL_CHANNELS];  // AudioBuffer pool channels
-    } MultiChannel;
+    rAudioProcessor *mixedProcessor;
 } AudioData;
 
 //----------------------------------------------------------------------------------
@@ -380,22 +402,34 @@ static AudioData AUDIO = {          // Global AUDIO context
     // After some math, considering a sampleRate of 48000, a buffer refill rate of 1/60 seconds and a
     // standard double-buffering system, a 4096 samples buffer has been chosen, it should be enough
     // In case of music-stalls, just increase this number
-    .Buffer.defaultSize = 0
+    .Buffer.defaultSize = 0,
+    .mixedProcessor = NULL
 };
 
 //----------------------------------------------------------------------------------
 // Module specific Functions Declaration
 //----------------------------------------------------------------------------------
 static void OnLog(void *pUserData, ma_uint32 level, const char *pMessage);
+
+// Reads audio data from an AudioBuffer object in internal/device formats
+static ma_uint32 ReadAudioBufferFramesInInternalFormat(AudioBuffer *audioBuffer, void *framesOut, ma_uint32 frameCount);
+static ma_uint32 ReadAudioBufferFramesInMixingFormat(AudioBuffer *audioBuffer, float *framesOut, ma_uint32 frameCount);
+
 static void OnSendAudioDataToDevice(ma_device *pDevice, void *pFramesOut, const void *pFramesInput, ma_uint32 frameCount);
 static void MixAudioFrames(float *framesOut, const float *framesIn, ma_uint32 frameCount, AudioBuffer *buffer);
+
+static bool IsAudioBufferPlayingInLockedState(AudioBuffer *buffer);
+static void StopAudioBufferInLockedState(AudioBuffer *buffer);
+static void UpdateAudioStreamInLockedState(AudioStream stream, const void *data, int frameCount);
 
 #if defined(RAUDIO_STANDALONE)
 static bool IsFileExtension(const char *fileName, const char *ext); // Check file extension
 static const char *GetFileExtension(const char *fileName);          // Get pointer to extension for a filename string (includes the dot: .png)
+static const char *GetFileName(const char *filePath);               // Get pointer to filename for a path string
+static const char *GetFileNameWithoutExt(const char *filePath);     // Get filename string without extension (uses static string)
 
-static unsigned char *LoadFileData(const char *fileName, unsigned int *bytesRead);     // Load file data as byte array (read)
-static bool SaveFileData(const char *fileName, void *data, unsigned int bytesToWrite); // Save data to file from byte array (write)
+static unsigned char *LoadFileData(const char *fileName, int *dataSize);    // Load file data as byte array (read)
+static bool SaveFileData(const char *fileName, void *data, int dataSize);   // Save data to file from byte array (write)
 static bool SaveFileText(const char *fileName, char *text);         // Save text data to file (write), string must be '\0' terminated
 #endif
 
@@ -417,6 +451,7 @@ void SetAudioBufferPan(AudioBuffer *buffer, float pan);
 void TrackAudioBuffer(AudioBuffer *buffer);
 void UntrackAudioBuffer(AudioBuffer *buffer);
 
+
 //----------------------------------------------------------------------------------
 // Module Functions Definition - Audio Device initialization and Closing
 //----------------------------------------------------------------------------------
@@ -435,12 +470,12 @@ void InitAudioDevice(void)
     }
 
     // Init audio device
-    // NOTE: Using the default device. Format is floating point because it simplifies mixing.
+    // NOTE: Using the default device. Format is floating point because it simplifies mixing
     ma_device_config config = ma_device_config_init(ma_device_type_playback);
-    config.playback.pDeviceID = NULL;  // NULL for the default playback AUDIO.System.device.
+    config.playback.pDeviceID = NULL;  // NULL for the default playback AUDIO.System.device
     config.playback.format = AUDIO_DEVICE_FORMAT;
     config.playback.channels = AUDIO_DEVICE_CHANNELS;
-    config.capture.pDeviceID = NULL;  // NULL for the default capture AUDIO.System.device.
+    config.capture.pDeviceID = NULL;  // NULL for the default capture AUDIO.System.device
     config.capture.format = ma_format_s16;
     config.capture.channels = 1;
     config.sampleRate = AUDIO_DEVICE_SAMPLE_RATE;
@@ -455,8 +490,18 @@ void InitAudioDevice(void)
         return;
     }
 
+    // Mixing happens on a separate thread which means we need to synchronize. I'm using a mutex here to make things simple, but may
+    // want to look at something a bit smarter later on to keep everything real-time, if that's necessary
+    if (ma_mutex_init(&AUDIO.System.lock) != MA_SUCCESS)
+    {
+        TRACELOG(LOG_WARNING, "AUDIO: Failed to create mutex for mixing");
+        ma_device_uninit(&AUDIO.System.device);
+        ma_context_uninit(&AUDIO.System.context);
+        return;
+    }
+
     // Keep the device running the whole time. May want to consider doing something a bit smarter and only have the device running
-    // while there's at least one sound being played.
+    // while there's at least one sound being played
     result = ma_device_start(&AUDIO.System.device);
     if (result != MA_SUCCESS)
     {
@@ -466,25 +511,8 @@ void InitAudioDevice(void)
         return;
     }
 
-    // Mixing happens on a seperate thread which means we need to synchronize. I'm using a mutex here to make things simple, but may
-    // want to look at something a bit smarter later on to keep everything real-time, if that's necessary.
-    if (ma_mutex_init(&AUDIO.System.lock) != MA_SUCCESS)
-    {
-        TRACELOG(LOG_WARNING, "AUDIO: Failed to create mutex for mixing");
-        ma_device_uninit(&AUDIO.System.device);
-        ma_context_uninit(&AUDIO.System.context);
-        return;
-    }
-
-    // Init dummy audio buffers pool for multichannel sound playing
-    for (int i = 0; i < MAX_AUDIO_BUFFER_POOL_CHANNELS; i++)
-    {
-        // WARNING: An empty audio buffer is created (data = 0) and added to list, AudioBuffer data is filled on PlaySoundMulti()
-        AUDIO.MultiChannel.pool[i] = LoadAudioBuffer(AUDIO_DEVICE_FORMAT, AUDIO_DEVICE_CHANNELS, AUDIO.System.device.sampleRate, 0, AUDIO_BUFFER_USAGE_STATIC);
-    }
-
     TRACELOG(LOG_INFO, "AUDIO: Device initialized successfully");
-    TRACELOG(LOG_INFO, "    > Backend:       miniaudio / %s", ma_get_backend_name(AUDIO.System.context.backend));
+    TRACELOG(LOG_INFO, "    > Backend:       miniaudio | %s", ma_get_backend_name(AUDIO.System.context.backend));
     TRACELOG(LOG_INFO, "    > Format:        %s -> %s", ma_get_format_name(AUDIO.System.device.playback.format), ma_get_format_name(AUDIO.System.device.playback.internalFormat));
     TRACELOG(LOG_INFO, "    > Channels:      %d -> %d", AUDIO.System.device.playback.channels, AUDIO.System.device.playback.internalChannels);
     TRACELOG(LOG_INFO, "    > Sample rate:   %d -> %d", AUDIO.System.device.sampleRate, AUDIO.System.device.playback.internalSampleRate);
@@ -498,20 +526,6 @@ void CloseAudioDevice(void)
 {
     if (AUDIO.System.isReady)
     {
-        // Unload dummy audio buffers pool
-        // WARNING: They can be pointing to already unloaded data
-        for (int i = 0; i < MAX_AUDIO_BUFFER_POOL_CHANNELS; i++)
-        {
-            //UnloadAudioBuffer(AUDIO.MultiChannel.pool[i]);
-            if (AUDIO.MultiChannel.pool[i] != NULL)
-            {
-                ma_data_converter_uninit(&AUDIO.MultiChannel.pool[i]->converter, NULL);
-                UntrackAudioBuffer(AUDIO.MultiChannel.pool[i]);
-                //RL_FREE(buffer->data);    // Already unloaded by UnloadSound()
-                RL_FREE(AUDIO.MultiChannel.pool[i]);
-            }
-        }
-
         ma_mutex_uninit(&AUDIO.System.lock);
         ma_device_uninit(&AUDIO.System.device);
         ma_context_uninit(&AUDIO.System.context);
@@ -520,7 +534,7 @@ void CloseAudioDevice(void)
         RL_FREE(AUDIO.System.pcmBuffer);
         AUDIO.System.pcmBuffer = NULL;
         AUDIO.System.pcmBufferSize = 0;
-        
+
         TRACELOG(LOG_INFO, "AUDIO: Device closed successfully");
     }
     else TRACELOG(LOG_WARNING, "AUDIO: Device could not be closed, not currently initialized");
@@ -536,6 +550,14 @@ bool IsAudioDeviceReady(void)
 void SetMasterVolume(float volume)
 {
     ma_device_set_master_volume(&AUDIO.System.device, volume);
+}
+
+// Get master volume (listener)
+float GetMasterVolume(void)
+{
+    float volume = 0.0f;
+    ma_device_get_master_volume(&AUDIO.System.device, &volume);
+    return volume;
 }
 
 //----------------------------------------------------------------------------------
@@ -600,69 +622,77 @@ void UnloadAudioBuffer(AudioBuffer *buffer)
 {
     if (buffer != NULL)
     {
-        ma_data_converter_uninit(&buffer->converter, NULL);
         UntrackAudioBuffer(buffer);
+        ma_data_converter_uninit(&buffer->converter, NULL);
         RL_FREE(buffer->data);
         RL_FREE(buffer);
     }
 }
 
-// Check if an audio buffer is playing
+// Check if an audio buffer is playing from a program state without lock
 bool IsAudioBufferPlaying(AudioBuffer *buffer)
 {
     bool result = false;
-
-    if (buffer != NULL) result = (buffer->playing && !buffer->paused);
-
+    ma_mutex_lock(&AUDIO.System.lock);
+    result = IsAudioBufferPlayingInLockedState(buffer);
+    ma_mutex_unlock(&AUDIO.System.lock);
     return result;
 }
 
 // Play an audio buffer
-// NOTE: Buffer is restarted to the start.
-// Use PauseAudioBuffer() and ResumeAudioBuffer() if the playback position should be maintained.
+// NOTE: Buffer is restarted to the start
+// Use PauseAudioBuffer() and ResumeAudioBuffer() if the playback position should be maintained
 void PlayAudioBuffer(AudioBuffer *buffer)
 {
     if (buffer != NULL)
     {
+        ma_mutex_lock(&AUDIO.System.lock);
         buffer->playing = true;
         buffer->paused = false;
         buffer->frameCursorPos = 0;
+        ma_mutex_unlock(&AUDIO.System.lock);
     }
 }
 
-// Stop an audio buffer
+// Stop an audio buffer from a program state without lock
 void StopAudioBuffer(AudioBuffer *buffer)
 {
-    if (buffer != NULL)
-    {
-        if (IsAudioBufferPlaying(buffer))
-        {
-            buffer->playing = false;
-            buffer->paused = false;
-            buffer->frameCursorPos = 0;
-            buffer->framesProcessed = 0;
-            buffer->isSubBufferProcessed[0] = true;
-            buffer->isSubBufferProcessed[1] = true;
-        }
-    }
+    ma_mutex_lock(&AUDIO.System.lock);
+    StopAudioBufferInLockedState(buffer);
+    ma_mutex_unlock(&AUDIO.System.lock);
 }
 
 // Pause an audio buffer
 void PauseAudioBuffer(AudioBuffer *buffer)
 {
-    if (buffer != NULL) buffer->paused = true;
+    if (buffer != NULL)
+    {
+        ma_mutex_lock(&AUDIO.System.lock);
+        buffer->paused = true;
+        ma_mutex_unlock(&AUDIO.System.lock);
+    }
 }
 
 // Resume an audio buffer
 void ResumeAudioBuffer(AudioBuffer *buffer)
 {
-    if (buffer != NULL) buffer->paused = false;
+    if (buffer != NULL)
+    {
+        ma_mutex_lock(&AUDIO.System.lock);
+        buffer->paused = false;
+        ma_mutex_unlock(&AUDIO.System.lock);
+    }
 }
 
 // Set volume for an audio buffer
 void SetAudioBufferVolume(AudioBuffer *buffer, float volume)
 {
-    if (buffer != NULL) buffer->volume = volume;
+    if (buffer != NULL)
+    {
+        ma_mutex_lock(&AUDIO.System.lock);
+        buffer->volume = volume;
+        ma_mutex_unlock(&AUDIO.System.lock);
+    }
 }
 
 // Set pitch for an audio buffer
@@ -670,7 +700,8 @@ void SetAudioBufferPitch(AudioBuffer *buffer, float pitch)
 {
     if ((buffer != NULL) && (pitch > 0.0f))
     {
-        // Pitching is just an adjustment of the sample rate.
+        ma_mutex_lock(&AUDIO.System.lock);
+        // Pitching is just an adjustment of the sample rate
         // Note that this changes the duration of the sound:
         //  - higher pitches will make the sound faster
         //  - lower pitches make it slower
@@ -678,6 +709,7 @@ void SetAudioBufferPitch(AudioBuffer *buffer, float pitch)
         ma_data_converter_set_rate(&buffer->converter, buffer->converter.sampleRateIn, outputSampleRate);
 
         buffer->pitch = pitch;
+        ma_mutex_unlock(&AUDIO.System.lock);
     }
 }
 
@@ -687,7 +719,12 @@ void SetAudioBufferPan(AudioBuffer *buffer, float pan)
     if (pan < 0.0f) pan = 0.0f;
     else if (pan > 1.0f) pan = 1.0f;
 
-    if (buffer != NULL) buffer->pan = pan;
+    if (buffer != NULL)
+    {
+        ma_mutex_lock(&AUDIO.System.lock);
+        buffer->pan = pan;
+        ma_mutex_unlock(&AUDIO.System.lock);
+    }
 }
 
 // Track audio buffer to linked list next position
@@ -734,13 +771,13 @@ Wave LoadWave(const char *fileName)
     Wave wave = { 0 };
 
     // Loading file to memory
-    unsigned int fileSize = 0;
-    unsigned char *fileData = LoadFileData(fileName, &fileSize);
+    int dataSize = 0;
+    unsigned char *fileData = LoadFileData(fileName, &dataSize);
 
     // Loading wave from memory data
-    if (fileData != NULL) wave = LoadWaveFromMemory(GetFileExtension(fileName), fileData, fileSize);
+    if (fileData != NULL) wave = LoadWaveFromMemory(GetFileExtension(fileName), fileData, dataSize);
 
-    RL_FREE(fileData);
+    UnloadFileData(fileData);
 
     return wave;
 }
@@ -753,7 +790,7 @@ Wave LoadWaveFromMemory(const char *fileType, const unsigned char *fileData, int
 
     if (false) { }
 #if defined(SUPPORT_FILEFORMAT_WAV)
-    else if (strcmp(fileType, ".wav") == 0)
+    else if ((strcmp(fileType, ".wav") == 0) || (strcmp(fileType, ".WAV") == 0))
     {
         drwav wav = { 0 };
         bool success = drwav_init_memory(&wav, fileData, dataSize, NULL);
@@ -775,7 +812,7 @@ Wave LoadWaveFromMemory(const char *fileType, const unsigned char *fileData, int
     }
 #endif
 #if defined(SUPPORT_FILEFORMAT_OGG)
-    else if (strcmp(fileType, ".ogg") == 0)
+    else if ((strcmp(fileType, ".ogg") == 0) || (strcmp(fileType, ".OGG") == 0))
     {
         stb_vorbis *oggData = stb_vorbis_open_memory((unsigned char *)fileData, dataSize, NULL, NULL);
 
@@ -796,21 +833,8 @@ Wave LoadWaveFromMemory(const char *fileType, const unsigned char *fileData, int
         else TRACELOG(LOG_WARNING, "WAVE: Failed to load OGG data");
     }
 #endif
-#if defined(SUPPORT_FILEFORMAT_FLAC)
-    else if (strcmp(fileType, ".flac") == 0)
-    {
-        unsigned long long int totalFrameCount = 0;
-
-        // NOTE: We are forcing conversion to 16bit sample size on reading
-        wave.data = drflac_open_memory_and_read_pcm_frames_s16(fileData, dataSize, &wave.channels, &wave.sampleRate, &totalFrameCount, NULL);
-        wave.sampleSize = 16;
-
-        if (wave.data != NULL) wave.frameCount = (unsigned int)totalFrameCount;
-        else TRACELOG(LOG_WARNING, "WAVE: Failed to load FLAC data");
-    }
-#endif
 #if defined(SUPPORT_FILEFORMAT_MP3)
-    else if (strcmp(fileType, ".mp3") == 0)
+    else if ((strcmp(fileType, ".mp3") == 0) || (strcmp(fileType, ".MP3") == 0))
     {
         drmp3_config config = { 0 };
         unsigned long long int totalFrameCount = 0;
@@ -829,11 +853,57 @@ Wave LoadWaveFromMemory(const char *fileType, const unsigned char *fileData, int
 
     }
 #endif
+#if defined(SUPPORT_FILEFORMAT_QOA)
+    else if ((strcmp(fileType, ".qoa") == 0) || (strcmp(fileType, ".QOA") == 0))
+    {
+        qoa_desc qoa = { 0 };
+
+        // NOTE: Returned sample data is always 16 bit?
+        wave.data = qoa_decode(fileData, dataSize, &qoa);
+        wave.sampleSize = 16;
+
+        if (wave.data != NULL)
+        {
+            wave.channels = qoa.channels;
+            wave.sampleRate = qoa.samplerate;
+            wave.frameCount = qoa.samples;
+        }
+        else TRACELOG(LOG_WARNING, "WAVE: Failed to load QOA data");
+
+    }
+#endif
+#if defined(SUPPORT_FILEFORMAT_FLAC)
+    else if ((strcmp(fileType, ".flac") == 0) || (strcmp(fileType, ".FLAC") == 0))
+    {
+        unsigned long long int totalFrameCount = 0;
+
+        // NOTE: We are forcing conversion to 16bit sample size on reading
+        wave.data = drflac_open_memory_and_read_pcm_frames_s16(fileData, dataSize, &wave.channels, &wave.sampleRate, &totalFrameCount, NULL);
+        wave.sampleSize = 16;
+
+        if (wave.data != NULL) wave.frameCount = (unsigned int)totalFrameCount;
+        else TRACELOG(LOG_WARNING, "WAVE: Failed to load FLAC data");
+    }
+#endif
     else TRACELOG(LOG_WARNING, "WAVE: Data format not supported");
 
     TRACELOG(LOG_INFO, "WAVE: Data loaded successfully (%i Hz, %i bit, %i channels)", wave.sampleRate, wave.sampleSize, wave.channels);
 
     return wave;
+}
+
+// Checks if wave data is ready
+bool IsWaveReady(Wave wave)
+{
+    bool result = false;
+
+    if ((wave.data != NULL) &&      // Validate wave data available
+        (wave.frameCount > 0) &&    // Validate frame count
+        (wave.sampleRate > 0) &&    // Validate sample rate is supported
+        (wave.sampleSize > 0) &&    // Validate sample size is supported
+        (wave.channels > 0)) result = true; // Validate number of channels supported
+
+    return result;
 }
 
 // Load sound from file
@@ -857,15 +927,15 @@ Sound LoadSoundFromWave(Wave wave)
 
     if (wave.data != NULL)
     {
-        // When using miniaudio we need to do our own mixing.
+        // When using miniaudio we need to do our own mixing
         // To simplify this we need convert the format of each sound to be consistent with
         // the format used to open the playback AUDIO.System.device. We can do this two ways:
         //
-        //   1) Convert the whole sound in one go at load time (here).
-        //   2) Convert the audio data in chunks at mixing time.
+        //   1) Convert the whole sound in one go at load time (here)
+        //   2) Convert the audio data in chunks at mixing time
         //
-        // First option has been selected, format conversion is done on the loading stage.
-        // The downside is that it uses more memory if the original sound is u8 or s16.
+        // First option has been selected, format conversion is done on the loading stage
+        // The downside is that it uses more memory if the original sound is u8 or s16
         ma_format formatIn = ((wave.sampleSize == 8)? ma_format_u8 : ((wave.sampleSize == 16)? ma_format_s16 : ma_format_f32));
         ma_uint32 frameCountIn = wave.frameCount;
 
@@ -892,6 +962,51 @@ Sound LoadSoundFromWave(Wave wave)
     return sound;
 }
 
+// Clone sound from existing sound data, clone does not own wave data
+// NOTE: Wave data must be unallocated manually and will be shared across all clones
+Sound LoadSoundAlias(Sound source)
+{
+    Sound sound = { 0 };
+
+    if (source.stream.buffer->data != NULL)
+    {
+        AudioBuffer *audioBuffer = LoadAudioBuffer(AUDIO_DEVICE_FORMAT, AUDIO_DEVICE_CHANNELS, AUDIO.System.device.sampleRate, 0, AUDIO_BUFFER_USAGE_STATIC);
+
+        if (audioBuffer == NULL)
+        {
+            TRACELOG(LOG_WARNING, "SOUND: Failed to create buffer");
+            return sound; // Early return to avoid dereferencing the audioBuffer null pointer
+        }
+
+        audioBuffer->sizeInFrames = source.stream.buffer->sizeInFrames;
+        audioBuffer->volume = source.stream.buffer->volume;
+        audioBuffer->data = source.stream.buffer->data;
+
+        sound.frameCount = source.frameCount;
+        sound.stream.sampleRate = AUDIO.System.device.sampleRate;
+        sound.stream.sampleSize = 32;
+        sound.stream.channels = AUDIO_DEVICE_CHANNELS;
+        sound.stream.buffer = audioBuffer;
+    }
+
+    return sound;
+}
+
+
+// Checks if a sound is ready
+bool IsSoundReady(Sound sound)
+{
+    bool result = false;
+
+    if ((sound.frameCount > 0) &&           // Validate frame count
+        (sound.stream.buffer != NULL) &&    // Validate stream buffer
+        (sound.stream.sampleRate > 0) &&    // Validate sample rate is supported
+        (sound.stream.sampleSize > 0) &&    // Validate sample size is supported
+        (sound.stream.channels > 0)) result = true; // Validate number of channels supported
+
+    return result;
+}
+
 // Unload wave data
 void UnloadWave(Wave wave)
 {
@@ -906,15 +1021,25 @@ void UnloadSound(Sound sound)
     //TRACELOG(LOG_INFO, "SOUND: Unloaded sound data from RAM");
 }
 
+void UnloadSoundAlias(Sound alias)
+{
+    // Untrack and unload just the sound buffer, not the sample data, it is shared with the source for the alias
+    if (alias.stream.buffer != NULL)
+    {
+        UntrackAudioBuffer(alias.stream.buffer);
+        ma_data_converter_uninit(&alias.stream.buffer->converter, NULL);
+        RL_FREE(alias.stream.buffer);
+    }
+}
+
 // Update sound buffer with new data
-void UpdateSound(Sound sound, const void *data, int sampleCount)
+void UpdateSound(Sound sound, const void *data, int frameCount)
 {
     if (sound.stream.buffer != NULL)
     {
         StopAudioBuffer(sound.stream.buffer);
 
-        // TODO: May want to lock/unlock this since this data buffer is read at mixing time
-        memcpy(sound.stream.buffer->data, data, sampleCount*ma_get_bytes_per_frame(sound.stream.buffer->converter.formatIn, sound.stream.buffer->converter.channelsIn));
+        memcpy(sound.stream.buffer->data, data, frameCount*ma_get_bytes_per_frame(sound.stream.buffer->converter.formatIn, sound.stream.buffer->converter.channelsIn));
     }
 }
 
@@ -947,6 +1072,22 @@ bool ExportWave(Wave wave, const char *fileName)
         drwav_free(fileData, NULL);
     }
 #endif
+#if defined(SUPPORT_FILEFORMAT_QOA)
+    else if (IsFileExtension(fileName, ".qoa"))
+    {
+        if (wave.sampleSize == 16)
+        {
+            qoa_desc qoa = { 0 };
+            qoa.channels = wave.channels;
+            qoa.samplerate = wave.sampleRate;
+            qoa.samples = wave.frameCount;
+
+            int bytesWritten = qoa_write(fileName, wave.data, &qoa);
+            if (bytesWritten > 0) success = true;
+        }
+        else TRACELOG(LOG_WARNING, "AUDIO: Wave data must be 16 bit per sample for QOA format export");
+    }
+#endif
     else if (IsFileExtension(fileName, ".raw"))
     {
         // Export raw sample data (without header)
@@ -972,8 +1113,9 @@ bool ExportWaveAsCode(Wave wave, const char *fileName)
     int waveDataSize = wave.frameCount*wave.channels*wave.sampleSize/8;
 
     // NOTE: Text data buffer size is estimated considering wave data size in bytes
-    // and requiring 6 char bytes for every byte: "0x00, "
-    char *txtData = (char *)RL_CALLOC(waveDataSize*6 + 2000, sizeof(char));
+    // and requiring 12 char bytes for every byte; the actual size varies, but
+    // the longest possible char being appended is "%.4ff,\n    ", which is 12 bytes.
+    char *txtData = (char *)RL_CALLOC(waveDataSize*12 + 2000, sizeof(char));
 
     int byteCount = 0;
     byteCount += sprintf(txtData + byteCount, "\n//////////////////////////////////////////////////////////////////////////////////\n");
@@ -983,33 +1125,34 @@ bool ExportWaveAsCode(Wave wave, const char *fileName)
     byteCount += sprintf(txtData + byteCount, "// more info and bugs-report:  github.com/raysan5/raylib                        //\n");
     byteCount += sprintf(txtData + byteCount, "// feedback and support:       ray[at]raylib.com                                //\n");
     byteCount += sprintf(txtData + byteCount, "//                                                                              //\n");
-    byteCount += sprintf(txtData + byteCount, "// Copyright (c) 2018-2023 Ramon Santamaria (@raysan5)                          //\n");
+    byteCount += sprintf(txtData + byteCount, "// Copyright (c) 2018-2024 Ramon Santamaria (@raysan5)                          //\n");
     byteCount += sprintf(txtData + byteCount, "//                                                                              //\n");
     byteCount += sprintf(txtData + byteCount, "//////////////////////////////////////////////////////////////////////////////////\n\n");
 
-    char fileNameLower[256] = { 0 };
-    char fileNameUpper[256] = { 0 };
-    for (int i = 0; fileName[i] != '.'; i++) { fileNameLower[i] = fileName[i]; }      // Get filename without extension
-    for (int i = 0; fileNameLower[i] != '\0'; i++) if (fileNameLower[i] >= 'a' && fileNameLower[i] <= 'z') { fileNameUpper[i] = fileNameLower[i] - 32; }
+    // Get file name from path and convert variable name to uppercase
+    char varFileName[256] = { 0 };
+    strcpy(varFileName, GetFileNameWithoutExt(fileName));
+    for (int i = 0; varFileName[i] != '\0'; i++) if (varFileName[i] >= 'a' && varFileName[i] <= 'z') { varFileName[i] = varFileName[i] - 32; }
 
+    // Add wave information
     byteCount += sprintf(txtData + byteCount, "// Wave data information\n");
-    byteCount += sprintf(txtData + byteCount, "#define %s_FRAME_COUNT      %u\n", fileNameUpper, wave.frameCount);
-    byteCount += sprintf(txtData + byteCount, "#define %s_SAMPLE_RATE      %u\n", fileNameUpper, wave.sampleRate);
-    byteCount += sprintf(txtData + byteCount, "#define %s_SAMPLE_SIZE      %u\n", fileNameUpper, wave.sampleSize);
-    byteCount += sprintf(txtData + byteCount, "#define %s_CHANNELS         %u\n\n", fileNameUpper, wave.channels);
+    byteCount += sprintf(txtData + byteCount, "#define %s_FRAME_COUNT      %u\n", varFileName, wave.frameCount);
+    byteCount += sprintf(txtData + byteCount, "#define %s_SAMPLE_RATE      %u\n", varFileName, wave.sampleRate);
+    byteCount += sprintf(txtData + byteCount, "#define %s_SAMPLE_SIZE      %u\n", varFileName, wave.sampleSize);
+    byteCount += sprintf(txtData + byteCount, "#define %s_CHANNELS         %u\n\n", varFileName, wave.channels);
 
     // Write wave data as an array of values
     // Wave data is exported as byte array for 8/16bit and float array for 32bit float data
     // NOTE: Frame data exported is channel-interlaced: frame01[sampleChannel1, sampleChannel2, ...], frame02[], frame03[]
     if (wave.sampleSize == 32)
     {
-        byteCount += sprintf(txtData + byteCount, "static float %sData[%i] = {\n", fileNameLower, waveDataSize/4);
+        byteCount += sprintf(txtData + byteCount, "static float %s_DATA[%i] = {\n", varFileName, waveDataSize/4);
         for (int i = 1; i < waveDataSize/4; i++) byteCount += sprintf(txtData + byteCount, ((i%TEXT_BYTES_PER_LINE == 0)? "%.4ff,\n    " : "%.4ff, "), ((float *)wave.data)[i - 1]);
         byteCount += sprintf(txtData + byteCount, "%.4ff };\n", ((float *)wave.data)[waveDataSize/4 - 1]);
     }
     else
     {
-        byteCount += sprintf(txtData + byteCount, "static unsigned char %sData[%i] = { ", fileNameLower, waveDataSize);
+        byteCount += sprintf(txtData + byteCount, "static unsigned char %s_DATA[%i] = { ", varFileName, waveDataSize);
         for (int i = 1; i < waveDataSize; i++) byteCount += sprintf(txtData + byteCount, ((i%TEXT_BYTES_PER_LINE == 0)? "0x%x,\n    " : "0x%x, "), ((unsigned char *)wave.data)[i - 1]);
         byteCount += sprintf(txtData + byteCount, "0x%x };\n", ((unsigned char *)wave.data)[waveDataSize - 1]);
     }
@@ -1029,88 +1172,6 @@ bool ExportWaveAsCode(Wave wave, const char *fileName)
 void PlaySound(Sound sound)
 {
     PlayAudioBuffer(sound.stream.buffer);
-}
-
-// Play a sound in the multichannel buffer pool
-void PlaySoundMulti(Sound sound)
-{
-    int index = -1;
-    unsigned int oldAge = 0;
-    int oldIndex = -1;
-
-    // find the first non playing pool entry
-    for (int i = 0; i < MAX_AUDIO_BUFFER_POOL_CHANNELS; i++)
-    {
-        if (AUDIO.MultiChannel.channels[i] > oldAge)
-        {
-            oldAge = AUDIO.MultiChannel.channels[i];
-            oldIndex = i;
-        }
-
-        if (!IsAudioBufferPlaying(AUDIO.MultiChannel.pool[i]))
-        {
-            index = i;
-            break;
-        }
-    }
-
-    // If no none playing pool members can be index choose the oldest
-    if (index == -1)
-    {
-        TRACELOG(LOG_WARNING, "SOUND: Buffer pool is already full, count: %i", AUDIO.MultiChannel.poolCounter);
-
-        if (oldIndex == -1)
-        {
-            // Shouldn't be able to get here... but just in case something odd happens!
-            TRACELOG(LOG_WARNING, "SOUND: Buffer pool could not determine oldest buffer not playing sound");
-            return;
-        }
-
-        index = oldIndex;
-
-        // Just in case...
-        StopAudioBuffer(AUDIO.MultiChannel.pool[index]);
-    }
-
-    // Experimentally mutex lock doesn't seem to be needed this makes sense
-    // as pool[index] isn't playing and the only stuff we're copying
-    // shouldn't be changing...
-
-    AUDIO.MultiChannel.channels[index] = AUDIO.MultiChannel.poolCounter;
-    AUDIO.MultiChannel.poolCounter++;
-
-    SetAudioBufferVolume(AUDIO.MultiChannel.pool[index], sound.stream.buffer->volume);
-    SetAudioBufferPitch(AUDIO.MultiChannel.pool[index], sound.stream.buffer->pitch);
-    SetAudioBufferPan(AUDIO.MultiChannel.pool[index], sound.stream.buffer->pan);
-
-    AUDIO.MultiChannel.pool[index]->looping = sound.stream.buffer->looping;
-    AUDIO.MultiChannel.pool[index]->usage = sound.stream.buffer->usage;
-    AUDIO.MultiChannel.pool[index]->isSubBufferProcessed[0] = false;
-    AUDIO.MultiChannel.pool[index]->isSubBufferProcessed[1] = false;
-    AUDIO.MultiChannel.pool[index]->sizeInFrames = sound.stream.buffer->sizeInFrames;
-
-    AUDIO.MultiChannel.pool[index]->data = sound.stream.buffer->data;       // Fill dummy track with data for playing
-
-    PlayAudioBuffer(AUDIO.MultiChannel.pool[index]);
-}
-
-// Stop any sound played with PlaySoundMulti()
-void StopSoundMulti(void)
-{
-    for (int i = 0; i < MAX_AUDIO_BUFFER_POOL_CHANNELS; i++) StopAudioBuffer(AUDIO.MultiChannel.pool[i]);
-}
-
-// Get number of sounds playing in the multichannel buffer pool
-int GetSoundsPlaying(void)
-{
-    int counter = 0;
-
-    for (int i = 0; i < MAX_AUDIO_BUFFER_POOL_CHANNELS; i++)
-    {
-        if (IsAudioBufferPlaying(AUDIO.MultiChannel.pool[i])) counter++;
-    }
-
-    return counter;
 }
 
 // Pause a sound
@@ -1134,7 +1195,11 @@ void StopSound(Sound sound)
 // Check if a sound is playing
 bool IsSoundPlaying(Sound sound)
 {
-    return IsAudioBufferPlaying(sound.stream.buffer);
+    bool result = false;
+
+    if (IsAudioBufferPlaying(sound.stream.buffer)) result = true;
+
+    return result;
 }
 
 // Set volume for a sound
@@ -1209,20 +1274,21 @@ Wave WaveCopy(Wave wave)
     return newWave;
 }
 
-// Crop a wave to defined samples range
+// Crop a wave to defined frames range
 // NOTE: Security check in case of out-of-range
-void WaveCrop(Wave *wave, int initSample, int finalSample)
+void WaveCrop(Wave *wave, int initFrame, int finalFrame)
 {
-    if ((initSample >= 0) && (initSample < finalSample) && ((unsigned int)finalSample < (wave->frameCount*wave->channels)))
+    if ((initFrame >= 0) && (initFrame < finalFrame) && ((unsigned int)finalFrame <= wave->frameCount))
     {
-        int sampleCount = finalSample - initSample;
+        int frameCount = finalFrame - initFrame;
 
-        void *data = RL_MALLOC(sampleCount*wave->sampleSize/8);
+        void *data = RL_MALLOC(frameCount*wave->channels*wave->sampleSize/8);
 
-        memcpy(data, (unsigned char *)wave->data + (initSample*wave->channels*wave->sampleSize/8), sampleCount*wave->sampleSize/8);
+        memcpy(data, (unsigned char *)wave->data + (initFrame*wave->channels*wave->sampleSize/8), frameCount*wave->channels*wave->sampleSize/8);
 
         RL_FREE(wave->data);
         wave->data = data;
+        wave->frameCount = (unsigned int)frameCount;
     }
     else TRACELOG(LOG_WARNING, "WAVE: Crop range out of bounds");
 }
@@ -1253,7 +1319,7 @@ void UnloadWaveSamples(float *samples)
 }
 
 //----------------------------------------------------------------------------------
-// Module Functions Definition - Music loading and stream playing (.OGG)
+// Module Functions Definition - Music loading and stream playing
 //----------------------------------------------------------------------------------
 
 // Load music stream from file
@@ -1269,11 +1335,10 @@ Music LoadMusicStream(const char *fileName)
         drwav *ctxWav = RL_CALLOC(1, sizeof(drwav));
         bool success = drwav_init_file(ctxWav, fileName, NULL);
 
-        music.ctxType = MUSIC_AUDIO_WAV;
-        music.ctxData = ctxWav;
-
         if (success)
         {
+            music.ctxType = MUSIC_AUDIO_WAV;
+            music.ctxData = ctxWav;
             int sampleSize = ctxWav->bitsPerSample;
             if (ctxWav->bitsPerSample == 24) sampleSize = 16;   // Forcing conversion to s16 on UpdateMusicStream()
 
@@ -1282,17 +1347,22 @@ Music LoadMusicStream(const char *fileName)
             music.looping = true;   // Looping enabled by default
             musicLoaded = true;
         }
+        else
+        {
+            RL_FREE(ctxWav);
+        }
     }
 #endif
 #if defined(SUPPORT_FILEFORMAT_OGG)
     else if (IsFileExtension(fileName, ".ogg"))
     {
         // Open ogg audio stream
-        music.ctxType = MUSIC_AUDIO_OGG;
-        music.ctxData = stb_vorbis_open_filename(fileName, NULL, NULL);
+        stb_vorbis *ctxOgg = stb_vorbis_open_filename(fileName, NULL, NULL);
 
-        if (music.ctxData != NULL)
+        if (ctxOgg != NULL)
         {
+            music.ctxType = MUSIC_AUDIO_OGG;
+            music.ctxData = ctxOgg;
             stb_vorbis_info info = stb_vorbis_get_info((stb_vorbis *)music.ctxData);  // Get Ogg file info
 
             // OGG bit rate defaults to 16 bit, it's enough for compressed format
@@ -1303,22 +1373,9 @@ Music LoadMusicStream(const char *fileName)
             music.looping = true;   // Looping enabled by default
             musicLoaded = true;
         }
-    }
-#endif
-#if defined(SUPPORT_FILEFORMAT_FLAC)
-    else if (IsFileExtension(fileName, ".flac"))
-    {
-        music.ctxType = MUSIC_AUDIO_FLAC;
-        music.ctxData = drflac_open_file(fileName, NULL);
-
-        if (music.ctxData != NULL)
+        else
         {
-            drflac *ctxFlac = (drflac *)music.ctxData;
-
-            music.stream = LoadAudioStream(ctxFlac->sampleRate, ctxFlac->bitsPerSample, ctxFlac->channels);
-            music.frameCount = (unsigned int)ctxFlac->totalPCMFrameCount;
-            music.looping = true;   // Looping enabled by default
-            musicLoaded = true;
+            stb_vorbis_close(ctxOgg);
         }
     }
 #endif
@@ -1328,15 +1385,57 @@ Music LoadMusicStream(const char *fileName)
         drmp3 *ctxMp3 = RL_CALLOC(1, sizeof(drmp3));
         int result = drmp3_init_file(ctxMp3, fileName, NULL);
 
-        music.ctxType = MUSIC_AUDIO_MP3;
-        music.ctxData = ctxMp3;
-
         if (result > 0)
         {
+            music.ctxType = MUSIC_AUDIO_MP3;
+            music.ctxData = ctxMp3;
             music.stream = LoadAudioStream(ctxMp3->sampleRate, 32, ctxMp3->channels);
             music.frameCount = (unsigned int)drmp3_get_pcm_frame_count(ctxMp3);
             music.looping = true;   // Looping enabled by default
             musicLoaded = true;
+        }
+        else
+        {
+            RL_FREE(ctxMp3);
+        }
+    }
+#endif
+#if defined(SUPPORT_FILEFORMAT_QOA)
+    else if (IsFileExtension(fileName, ".qoa"))
+    {
+        qoaplay_desc *ctxQoa = qoaplay_open(fileName);
+
+        if (ctxQoa != NULL)
+        {
+            music.ctxType = MUSIC_AUDIO_QOA;
+            music.ctxData = ctxQoa;
+            // NOTE: We are loading samples are 32bit float normalized data, so,
+            // we configure the output audio stream to also use float 32bit
+            music.stream = LoadAudioStream(ctxQoa->info.samplerate, 32, ctxQoa->info.channels);
+            music.frameCount = ctxQoa->info.samples;
+            music.looping = true;   // Looping enabled by default
+            musicLoaded = true;
+        }
+        else{} //No uninit required
+    }
+#endif
+#if defined(SUPPORT_FILEFORMAT_FLAC)
+    else if (IsFileExtension(fileName, ".flac"))
+    {
+        drflac *ctxFlac = drflac_open_file(fileName, NULL);
+
+        if (ctxFlac != NULL)
+        {
+            music.ctxType = MUSIC_AUDIO_FLAC;
+            music.ctxData = ctxFlac;
+            music.stream = LoadAudioStream(ctxFlac->sampleRate, ctxFlac->bitsPerSample, ctxFlac->channels);
+            music.frameCount = (unsigned int)ctxFlac->totalPCMFrameCount;
+            music.looping = true;   // Looping enabled by default
+            musicLoaded = true;
+        }
+        else
+        {
+            drflac_free(ctxFlac, NULL);
         }
     }
 #endif
@@ -1346,11 +1445,10 @@ Music LoadMusicStream(const char *fileName)
         jar_xm_context_t *ctxXm = NULL;
         int result = jar_xm_create_context_from_file(&ctxXm, AUDIO.System.device.sampleRate, fileName);
 
-        music.ctxType = MUSIC_MODULE_XM;
-        music.ctxData = ctxXm;
-
         if (result == 0)    // XM AUDIO.System.context created successfully
         {
+            music.ctxType = MUSIC_MODULE_XM;
+            music.ctxData = ctxXm;
             jar_xm_set_max_loop_count(ctxXm, 0);    // Set infinite number of loops
 
             unsigned int bits = 32;
@@ -1361,8 +1459,12 @@ Music LoadMusicStream(const char *fileName)
             music.stream = LoadAudioStream(AUDIO.System.device.sampleRate, bits, AUDIO_DEVICE_CHANNELS);
             music.frameCount = (unsigned int)jar_xm_get_remaining_samples(ctxXm);    // NOTE: Always 2 channels (stereo)
             music.looping = true;   // Looping enabled by default
-            jar_xm_reset(ctxXm);    // make sure we start at the beginning of the song
+            jar_xm_reset(ctxXm);    // Make sure we start at the beginning of the song
             musicLoaded = true;
+        }
+        else 
+        {
+            jar_xm_free_context(ctxXm);
         }
     }
 #endif
@@ -1373,16 +1475,20 @@ Music LoadMusicStream(const char *fileName)
         jar_mod_init(ctxMod);
         int result = jar_mod_load_file(ctxMod, fileName);
 
-        music.ctxType = MUSIC_MODULE_MOD;
-        music.ctxData = ctxMod;
-
         if (result > 0)
         {
+            music.ctxType = MUSIC_MODULE_MOD;
+            music.ctxData = ctxMod;
             // NOTE: Only stereo is supported for MOD
             music.stream = LoadAudioStream(AUDIO.System.device.sampleRate, 16, AUDIO_DEVICE_CHANNELS);
             music.frameCount = (unsigned int)jar_mod_max_samples(ctxMod);    // NOTE: Always 2 channels (stereo)
             music.looping = true;   // Looping enabled by default
             musicLoaded = true;
+        }
+        else
+        {
+            jar_mod_unload(ctxMod);
+            RL_FREE(ctxMod);
         }
     }
 #endif
@@ -1390,27 +1496,6 @@ Music LoadMusicStream(const char *fileName)
 
     if (!musicLoaded)
     {
-        if (false) { }
-    #if defined(SUPPORT_FILEFORMAT_WAV)
-        else if (music.ctxType == MUSIC_AUDIO_WAV) drwav_uninit((drwav *)music.ctxData);
-    #endif
-    #if defined(SUPPORT_FILEFORMAT_OGG)
-        else if (music.ctxType == MUSIC_AUDIO_OGG) stb_vorbis_close((stb_vorbis *)music.ctxData);
-    #endif
-    #if defined(SUPPORT_FILEFORMAT_FLAC)
-        else if (music.ctxType == MUSIC_AUDIO_FLAC) drflac_free((drflac *)music.ctxData, NULL);
-    #endif
-    #if defined(SUPPORT_FILEFORMAT_MP3)
-        else if (music.ctxType == MUSIC_AUDIO_MP3) { drmp3_uninit((drmp3 *)music.ctxData); RL_FREE(music.ctxData); }
-    #endif
-    #if defined(SUPPORT_FILEFORMAT_XM)
-        else if (music.ctxType == MUSIC_MODULE_XM) jar_xm_free_context((jar_xm_context_t *)music.ctxData);
-    #endif
-    #if defined(SUPPORT_FILEFORMAT_MOD)
-        else if (music.ctxType == MUSIC_MODULE_MOD) { jar_mod_unload((jar_mod_context_t *)music.ctxData); RL_FREE(music.ctxData); }
-    #endif
-
-        music.ctxData = NULL;
         TRACELOG(LOG_WARNING, "FILEIO: [%s] Music file could not be opened", fileName);
     }
     else
@@ -1435,17 +1520,16 @@ Music LoadMusicStreamFromMemory(const char *fileType, const unsigned char *data,
 
     if (false) { }
 #if defined(SUPPORT_FILEFORMAT_WAV)
-    else if (strcmp(fileType, ".wav") == 0)
+    else if ((strcmp(fileType, ".wav") == 0) || (strcmp(fileType, ".WAV") == 0))
     {
         drwav *ctxWav = RL_CALLOC(1, sizeof(drwav));
 
         bool success = drwav_init_memory(ctxWav, (const void *)data, dataSize, NULL);
 
-        music.ctxType = MUSIC_AUDIO_WAV;
-        music.ctxData = ctxWav;
-
         if (success)
         {
+            music.ctxType = MUSIC_AUDIO_WAV;
+            music.ctxData = ctxWav;
             int sampleSize = ctxWav->bitsPerSample;
             if (ctxWav->bitsPerSample == 24) sampleSize = 16;   // Forcing conversion to s16 on UpdateMusicStream()
 
@@ -1454,53 +1538,22 @@ Music LoadMusicStreamFromMemory(const char *fileType, const unsigned char *data,
             music.looping = true;   // Looping enabled by default
             musicLoaded = true;
         }
-    }
-#endif
-#if defined(SUPPORT_FILEFORMAT_FLAC)
-    else if (strcmp(fileType, ".flac") == 0)
-    {
-        music.ctxType = MUSIC_AUDIO_FLAC;
-        music.ctxData = drflac_open_memory((const void*)data, dataSize, NULL);
-
-        if (music.ctxData != NULL)
-        {
-            drflac *ctxFlac = (drflac *)music.ctxData;
-
-            music.stream = LoadAudioStream(ctxFlac->sampleRate, ctxFlac->bitsPerSample, ctxFlac->channels);
-            music.frameCount = (unsigned int)ctxFlac->totalPCMFrameCount;
-            music.looping = true;   // Looping enabled by default
-            musicLoaded = true;
-        }
-    }
-#endif
-#if defined(SUPPORT_FILEFORMAT_MP3)
-    else if (strcmp(fileType, ".mp3") == 0)
-    {
-        drmp3 *ctxMp3 = RL_CALLOC(1, sizeof(drmp3));
-        int success = drmp3_init_memory(ctxMp3, (const void*)data, dataSize, NULL);
-
-        music.ctxType = MUSIC_AUDIO_MP3;
-        music.ctxData = ctxMp3;
-
-        if (success)
-        {
-            music.stream = LoadAudioStream(ctxMp3->sampleRate, 32, ctxMp3->channels);
-            music.frameCount = (unsigned int)drmp3_get_pcm_frame_count(ctxMp3);
-            music.looping = true;   // Looping enabled by default
-            musicLoaded = true;
+        else {
+            drwav_uninit(ctxWav);
+            RL_FREE(ctxWav);
         }
     }
 #endif
 #if defined(SUPPORT_FILEFORMAT_OGG)
-    else if (strcmp(fileType, ".ogg") == 0)
+    else if ((strcmp(fileType, ".ogg") == 0) || (strcmp(fileType, ".OGG") == 0))
     {
         // Open ogg audio stream
-        music.ctxType = MUSIC_AUDIO_OGG;
-        //music.ctxData = stb_vorbis_open_filename(fileName, NULL, NULL);
-        music.ctxData = stb_vorbis_open_memory((const unsigned char *)data, dataSize, NULL, NULL);
+        stb_vorbis* ctxOgg = stb_vorbis_open_memory((const unsigned char*)data, dataSize, NULL, NULL);
 
-        if (music.ctxData != NULL)
+        if (ctxOgg != NULL)
         {
+            music.ctxType = MUSIC_AUDIO_OGG;
+            music.ctxData = ctxOgg;
             stb_vorbis_info info = stb_vorbis_get_info((stb_vorbis *)music.ctxData);  // Get Ogg file info
 
             // OGG bit rate defaults to 16 bit, it's enough for compressed format
@@ -1511,16 +1564,86 @@ Music LoadMusicStreamFromMemory(const char *fileType, const unsigned char *data,
             music.looping = true;   // Looping enabled by default
             musicLoaded = true;
         }
+        else 
+        {
+            stb_vorbis_close(ctxOgg);
+        }
+    }
+#endif
+#if defined(SUPPORT_FILEFORMAT_MP3)
+    else if ((strcmp(fileType, ".mp3") == 0) || (strcmp(fileType, ".MP3") == 0))
+    {
+        drmp3 *ctxMp3 = RL_CALLOC(1, sizeof(drmp3));
+        int success = drmp3_init_memory(ctxMp3, (const void*)data, dataSize, NULL);
+
+        if (success)
+        {
+            music.ctxType = MUSIC_AUDIO_MP3;
+            music.ctxData = ctxMp3;
+            music.stream = LoadAudioStream(ctxMp3->sampleRate, 32, ctxMp3->channels);
+            music.frameCount = (unsigned int)drmp3_get_pcm_frame_count(ctxMp3);
+            music.looping = true;   // Looping enabled by default
+            musicLoaded = true;
+        }
+        else
+        {
+            drmp3_uninit(ctxMp3);
+            RL_FREE(ctxMp3);
+        }
+    }
+#endif
+#if defined(SUPPORT_FILEFORMAT_QOA)
+    else if ((strcmp(fileType, ".qoa") == 0) || (strcmp(fileType, ".QOA") == 0))
+    {
+        qoaplay_desc *ctxQoa = NULL;
+        if ((data != NULL) && (dataSize > 0))
+        {
+            ctxQoa = qoaplay_open_memory(data, dataSize);
+        }
+
+        if (ctxQoa != NULL)
+        {
+            music.ctxType = MUSIC_AUDIO_QOA;
+            music.ctxData = ctxQoa;
+            // NOTE: We are loading samples are 32bit float normalized data, so,
+            // we configure the output audio stream to also use float 32bit
+            music.stream = LoadAudioStream(ctxQoa->info.samplerate, 32, ctxQoa->info.channels);
+            music.frameCount = ctxQoa->info.samples;
+            music.looping = true;   // Looping enabled by default
+            musicLoaded = true;
+        }
+        else{} //No uninit required
+    }
+#endif
+#if defined(SUPPORT_FILEFORMAT_FLAC)
+    else if ((strcmp(fileType, ".flac") == 0) || (strcmp(fileType, ".FLAC") == 0))
+    {
+        drflac *ctxFlac = drflac_open_memory((const void*)data, dataSize, NULL);
+
+        if (ctxFlac != NULL)
+        {
+            music.ctxType = MUSIC_AUDIO_FLAC;
+            music.ctxData = ctxFlac;
+            music.stream = LoadAudioStream(ctxFlac->sampleRate, ctxFlac->bitsPerSample, ctxFlac->channels);
+            music.frameCount = (unsigned int)ctxFlac->totalPCMFrameCount;
+            music.looping = true;   // Looping enabled by default
+            musicLoaded = true;
+        }
+        else
+        {
+            drflac_free(ctxFlac, NULL);
+        }
     }
 #endif
 #if defined(SUPPORT_FILEFORMAT_XM)
-    else if (strcmp(fileType, ".xm") == 0)
+    else if ((strcmp(fileType, ".xm") == 0) || (strcmp(fileType, ".XM") == 0))
     {
         jar_xm_context_t *ctxXm = NULL;
         int result = jar_xm_create_context_safe(&ctxXm, (const char *)data, dataSize, AUDIO.System.device.sampleRate);
         if (result == 0)    // XM AUDIO.System.context created successfully
         {
             music.ctxType = MUSIC_MODULE_XM;
+            music.ctxData = ctxXm;
             jar_xm_set_max_loop_count(ctxXm, 0);    // Set infinite number of loops
 
             unsigned int bits = 32;
@@ -1531,15 +1654,18 @@ Music LoadMusicStreamFromMemory(const char *fileType, const unsigned char *data,
             music.stream = LoadAudioStream(AUDIO.System.device.sampleRate, bits, 2);
             music.frameCount = (unsigned int)jar_xm_get_remaining_samples(ctxXm);    // NOTE: Always 2 channels (stereo)
             music.looping = true;   // Looping enabled by default
-            jar_xm_reset(ctxXm);    // make sure we start at the beginning of the song
+            jar_xm_reset(ctxXm);    // Make sure we start at the beginning of the song
 
-            music.ctxData = ctxXm;
             musicLoaded = true;
+        }
+        else
+        {
+            jar_xm_free_context(ctxXm);
         }
     }
 #endif
 #if defined(SUPPORT_FILEFORMAT_MOD)
-    else if (strcmp(fileType, ".mod") == 0)
+    else if ((strcmp(fileType, ".mod") == 0) || (strcmp(fileType, ".MOD") == 0))
     {
         jar_mod_context_t *ctxMod = (jar_mod_context_t *)RL_MALLOC(sizeof(jar_mod_context_t));
         int result = 0;
@@ -1562,15 +1688,18 @@ Music LoadMusicStreamFromMemory(const char *fileType, const unsigned char *data,
         if (result > 0)
         {
             music.ctxType = MUSIC_MODULE_MOD;
+            music.ctxData = ctxMod;
 
             // NOTE: Only stereo is supported for MOD
             music.stream = LoadAudioStream(AUDIO.System.device.sampleRate, 16, 2);
             music.frameCount = (unsigned int)jar_mod_max_samples(ctxMod);    // NOTE: Always 2 channels (stereo)
             music.looping = true;   // Looping enabled by default
             musicLoaded = true;
-
-            music.ctxData = ctxMod;
-            musicLoaded = true;
+        }
+        else
+        {
+            jar_mod_unload(ctxMod);
+            RL_FREE(ctxMod);
         }
     }
 #endif
@@ -1578,27 +1707,6 @@ Music LoadMusicStreamFromMemory(const char *fileType, const unsigned char *data,
 
     if (!musicLoaded)
     {
-        if (false) { }
-    #if defined(SUPPORT_FILEFORMAT_WAV)
-        else if (music.ctxType == MUSIC_AUDIO_WAV) drwav_uninit((drwav *)music.ctxData);
-    #endif
-    #if defined(SUPPORT_FILEFORMAT_FLAC)
-        else if (music.ctxType == MUSIC_AUDIO_FLAC) drflac_free((drflac *)music.ctxData, NULL);
-    #endif
-    #if defined(SUPPORT_FILEFORMAT_MP3)
-        else if (music.ctxType == MUSIC_AUDIO_MP3) { drmp3_uninit((drmp3 *)music.ctxData); RL_FREE(music.ctxData); }
-    #endif
-    #if defined(SUPPORT_FILEFORMAT_OGG)
-        else if (music.ctxType == MUSIC_AUDIO_OGG) stb_vorbis_close((stb_vorbis *)music.ctxData);
-    #endif
-    #if defined(SUPPORT_FILEFORMAT_XM)
-        else if (music.ctxType == MUSIC_MODULE_XM) jar_xm_free_context((jar_xm_context_t *)music.ctxData);
-    #endif
-    #if defined(SUPPORT_FILEFORMAT_MOD)
-        else if (music.ctxType == MUSIC_MODULE_MOD) { jar_mod_unload((jar_mod_context_t *)music.ctxData); RL_FREE(music.ctxData); }
-    #endif
-
-        music.ctxData = NULL;
         TRACELOG(LOG_WARNING, "FILEIO: Music data could not be loaded");
     }
     else
@@ -1612,6 +1720,16 @@ Music LoadMusicStreamFromMemory(const char *fileType, const unsigned char *data,
     }
 
     return music;
+}
+
+// Checks if a music stream is ready
+bool IsMusicReady(Music music)
+{
+    return ((music.ctxData != NULL) &&          // Validate context loaded
+            (music.frameCount > 0) &&           // Validate audio frame count
+            (music.stream.sampleRate > 0) &&    // Validate sample rate is supported
+            (music.stream.sampleSize > 0) &&    // Validate sample size is supported
+            (music.stream.channels > 0));       // Validate number of channels supported
 }
 
 // Unload music stream
@@ -1628,11 +1746,14 @@ void UnloadMusicStream(Music music)
 #if defined(SUPPORT_FILEFORMAT_OGG)
         else if (music.ctxType == MUSIC_AUDIO_OGG) stb_vorbis_close((stb_vorbis *)music.ctxData);
 #endif
-#if defined(SUPPORT_FILEFORMAT_FLAC)
-        else if (music.ctxType == MUSIC_AUDIO_FLAC) drflac_free((drflac *)music.ctxData, NULL);
-#endif
 #if defined(SUPPORT_FILEFORMAT_MP3)
         else if (music.ctxType == MUSIC_AUDIO_MP3) { drmp3_uninit((drmp3 *)music.ctxData); RL_FREE(music.ctxData); }
+#endif
+#if defined(SUPPORT_FILEFORMAT_QOA)
+        else if (music.ctxType == MUSIC_AUDIO_QOA) qoaplay_close((qoaplay_desc *)music.ctxData);
+#endif
+#if defined(SUPPORT_FILEFORMAT_FLAC)
+        else if (music.ctxType == MUSIC_AUDIO_FLAC) drflac_free((drflac *)music.ctxData, NULL);
 #endif
 #if defined(SUPPORT_FILEFORMAT_XM)
         else if (music.ctxType == MUSIC_MODULE_XM) jar_xm_free_context((jar_xm_context_t *)music.ctxData);
@@ -1643,19 +1764,10 @@ void UnloadMusicStream(Music music)
     }
 }
 
-// Start music playing (open stream)
+// Start music playing (open stream) from beginning
 void PlayMusicStream(Music music)
 {
-    if (music.stream.buffer != NULL)
-    {
-        // For music streams, we need to make sure we maintain the frame cursor position
-        // This is a hack for this section of code in UpdateMusicStream()
-        // NOTE: In case window is minimized, music stream is stopped, just make sure to
-        // play again on window restore: if (IsMusicStreamPlaying(music)) PlayMusicStream(music);
-        ma_uint32 frameCursorPos = music.stream.buffer->frameCursorPos;
-        PlayAudioStream(music.stream);  // WARNING: This resets the cursor position.
-        music.stream.buffer->frameCursorPos = frameCursorPos;
-    }
+    PlayAudioStream(music.stream);
 }
 
 // Pause music playing
@@ -1683,11 +1795,14 @@ void StopMusicStream(Music music)
 #if defined(SUPPORT_FILEFORMAT_OGG)
         case MUSIC_AUDIO_OGG: stb_vorbis_seek_start((stb_vorbis *)music.ctxData); break;
 #endif
-#if defined(SUPPORT_FILEFORMAT_FLAC)
-        case MUSIC_AUDIO_FLAC: drflac__seek_to_first_frame((drflac *)music.ctxData); break;
-#endif
 #if defined(SUPPORT_FILEFORMAT_MP3)
         case MUSIC_AUDIO_MP3: drmp3_seek_to_start_of_stream((drmp3 *)music.ctxData); break;
+#endif
+#if defined(SUPPORT_FILEFORMAT_QOA)
+        case MUSIC_AUDIO_QOA: qoaplay_rewind((qoaplay_desc *)music.ctxData); break;
+#endif
+#if defined(SUPPORT_FILEFORMAT_FLAC)
+        case MUSIC_AUDIO_FLAC: drflac__seek_to_first_frame((drflac *)music.ctxData); break;
 #endif
 #if defined(SUPPORT_FILEFORMAT_XM)
         case MUSIC_MODULE_XM: jar_xm_reset((jar_xm_context_t *)music.ctxData); break;
@@ -1715,16 +1830,28 @@ void SeekMusicStream(Music music, float position)
 #if defined(SUPPORT_FILEFORMAT_OGG)
         case MUSIC_AUDIO_OGG: stb_vorbis_seek_frame((stb_vorbis *)music.ctxData, positionInFrames); break;
 #endif
-#if defined(SUPPORT_FILEFORMAT_FLAC)
-        case MUSIC_AUDIO_FLAC: drflac_seek_to_pcm_frame((drflac *)music.ctxData, positionInFrames); break;
-#endif
 #if defined(SUPPORT_FILEFORMAT_MP3)
         case MUSIC_AUDIO_MP3: drmp3_seek_to_pcm_frame((drmp3 *)music.ctxData, positionInFrames); break;
+#endif
+#if defined(SUPPORT_FILEFORMAT_QOA)
+        case MUSIC_AUDIO_QOA:
+        {
+            int qoaFrame = positionInFrames/QOA_FRAME_LEN;
+            qoaplay_seek_frame((qoaplay_desc *)music.ctxData, qoaFrame); // Seeks to QOA frame, not PCM frame
+
+            // We need to compute QOA frame number and update positionInFrames
+            positionInFrames = ((qoaplay_desc *)music.ctxData)->sample_position;
+        } break;
+#endif
+#if defined(SUPPORT_FILEFORMAT_FLAC)
+        case MUSIC_AUDIO_FLAC: drflac_seek_to_pcm_frame((drflac *)music.ctxData, positionInFrames); break;
 #endif
         default: break;
     }
 
+    ma_mutex_lock(&AUDIO.System.lock);
     music.stream.buffer->framesProcessed = positionInFrames;
+    ma_mutex_unlock(&AUDIO.System.lock);
 }
 
 // Update (re-fill) music buffers if data already processed
@@ -1732,11 +1859,14 @@ void UpdateMusicStream(Music music)
 {
     if (music.stream.buffer == NULL) return;
 
+    ma_mutex_lock(&AUDIO.System.lock);
+
     unsigned int subBufferSizeInFrames = music.stream.buffer->sizeInFrames/2;
 
     // On first call of this function we lazily pre-allocated a temp buffer to read audio files/memory data in
     int frameSize = music.stream.channels*music.stream.sampleSize/8;
     unsigned int pcmSize = subBufferSizeInFrames*frameSize;
+
     if (AUDIO.System.pcmBufferSize < pcmSize)
     {
         RL_FREE(AUDIO.System.pcmBuffer);
@@ -1747,15 +1877,17 @@ void UpdateMusicStream(Music music)
     // Check both sub-buffers to check if they require refilling
     for (int i = 0; i < 2; i++)
     {
-        if ((music.stream.buffer != NULL) && !music.stream.buffer->isSubBufferProcessed[i]) continue; // No refilling required, move to next sub-buffer
+        if (!music.stream.buffer->isSubBufferProcessed[i]) continue; // No refilling required, move to next sub-buffer
 
         unsigned int framesLeft = music.frameCount - music.stream.buffer->framesProcessed;  // Frames left to be processed
         unsigned int framesToStream = 0;                 // Total frames to be streamed
+
         if ((framesLeft >= subBufferSizeInFrames) || music.looping) framesToStream = subBufferSizeInFrames;
         else framesToStream = framesLeft;
 
         int frameCountStillNeeded = framesToStream;
-        int frameCountRedTotal = 0;
+        int frameCountReadTotal = 0;
+
         switch (music.ctxType)
         {
         #if defined(SUPPORT_FILEFORMAT_WAV)
@@ -1765,9 +1897,9 @@ void UpdateMusicStream(Music music)
                 {
                     while (true)
                     {
-                        int frameCountRed = (int)drwav_read_pcm_frames_s16((drwav *)music.ctxData, frameCountStillNeeded, (short *)((char *)AUDIO.System.pcmBuffer + frameCountRedTotal*frameSize));
-                        frameCountRedTotal += frameCountRed;
-                        frameCountStillNeeded -= frameCountRed;
+                        int frameCountRead = (int)drwav_read_pcm_frames_s16((drwav *)music.ctxData, frameCountStillNeeded, (short *)((char *)AUDIO.System.pcmBuffer + frameCountReadTotal*frameSize));
+                        frameCountReadTotal += frameCountRead;
+                        frameCountStillNeeded -= frameCountRead;
                         if (frameCountStillNeeded == 0) break;
                         else drwav_seek_to_first_pcm_frame((drwav *)music.ctxData);
                     }
@@ -1776,9 +1908,9 @@ void UpdateMusicStream(Music music)
                 {
                     while (true)
                     {
-                        int frameCountRed = (int)drwav_read_pcm_frames_f32((drwav *)music.ctxData, frameCountStillNeeded, (float *)((char *)AUDIO.System.pcmBuffer + frameCountRedTotal*frameSize));
-                        frameCountRedTotal += frameCountRed;
-                        frameCountStillNeeded -= frameCountRed;
+                        int frameCountRead = (int)drwav_read_pcm_frames_f32((drwav *)music.ctxData, frameCountStillNeeded, (float *)((char *)AUDIO.System.pcmBuffer + frameCountReadTotal*frameSize));
+                        frameCountReadTotal += frameCountRead;
+                        frameCountStillNeeded -= frameCountRead;
                         if (frameCountStillNeeded == 0) break;
                         else drwav_seek_to_first_pcm_frame((drwav *)music.ctxData);
                     }
@@ -1790,24 +1922,11 @@ void UpdateMusicStream(Music music)
             {
                 while (true)
                 {
-                    int frameCountRed = stb_vorbis_get_samples_short_interleaved((stb_vorbis *)music.ctxData, music.stream.channels, (short *)((char *)AUDIO.System.pcmBuffer + frameCountRedTotal*frameSize), frameCountStillNeeded*music.stream.channels);
-                    frameCountRedTotal += frameCountRed;
-                    frameCountStillNeeded -= frameCountRed;
+                    int frameCountRead = stb_vorbis_get_samples_short_interleaved((stb_vorbis *)music.ctxData, music.stream.channels, (short *)((char *)AUDIO.System.pcmBuffer + frameCountReadTotal*frameSize), frameCountStillNeeded*music.stream.channels);
+                    frameCountReadTotal += frameCountRead;
+                    frameCountStillNeeded -= frameCountRead;
                     if (frameCountStillNeeded == 0) break;
                     else stb_vorbis_seek_start((stb_vorbis *)music.ctxData);
-                }
-            } break;
-        #endif
-        #if defined(SUPPORT_FILEFORMAT_FLAC)
-            case MUSIC_AUDIO_FLAC:
-            {
-                while (true)
-                {
-                    int frameCountRed = drflac_read_pcm_frames_s16((drflac *)music.ctxData, frameCountStillNeeded, (short *)((char *)AUDIO.System.pcmBuffer + frameCountRedTotal*frameSize));
-                    frameCountRedTotal += frameCountRed;
-                    frameCountStillNeeded -= frameCountRed;
-                    if (frameCountStillNeeded == 0) break;
-                    else drflac__seek_to_first_frame((drflac *)music.ctxData);
                 }
             } break;
         #endif
@@ -1816,11 +1935,41 @@ void UpdateMusicStream(Music music)
             {
                 while (true)
                 {
-                    int frameCountRed = (int)drmp3_read_pcm_frames_f32((drmp3 *)music.ctxData, frameCountStillNeeded, (float *)((char *)AUDIO.System.pcmBuffer + frameCountRedTotal*frameSize));
-                    frameCountRedTotal += frameCountRed;
-                    frameCountStillNeeded -= frameCountRed;
+                    int frameCountRead = (int)drmp3_read_pcm_frames_f32((drmp3 *)music.ctxData, frameCountStillNeeded, (float *)((char *)AUDIO.System.pcmBuffer + frameCountReadTotal*frameSize));
+                    frameCountReadTotal += frameCountRead;
+                    frameCountStillNeeded -= frameCountRead;
                     if (frameCountStillNeeded == 0) break;
                     else drmp3_seek_to_start_of_stream((drmp3 *)music.ctxData);
+                }
+            } break;
+        #endif
+        #if defined(SUPPORT_FILEFORMAT_QOA)
+            case MUSIC_AUDIO_QOA:
+            {
+                unsigned int frameCountRead = qoaplay_decode((qoaplay_desc *)music.ctxData, (float *)AUDIO.System.pcmBuffer, framesToStream);
+                frameCountReadTotal += frameCountRead;
+                /*
+                while (true)
+                {
+                    int frameCountRead = (int)qoaplay_decode((qoaplay_desc *)music.ctxData, (float *)((char *)AUDIO.System.pcmBuffer + frameCountReadTotal*frameSize),  frameCountStillNeeded);
+                    frameCountReadTotal += frameCountRead;
+                    frameCountStillNeeded -= frameCountRead;
+                    if (frameCountStillNeeded == 0) break;
+                    else qoaplay_rewind((qoaplay_desc *)music.ctxData);
+                }
+                */
+            } break;
+        #endif
+        #if defined(SUPPORT_FILEFORMAT_FLAC)
+            case MUSIC_AUDIO_FLAC:
+            {
+                while (true)
+                {
+                    int frameCountRead = (int)drflac_read_pcm_frames_s16((drflac *)music.ctxData, frameCountStillNeeded, (short *)((char *)AUDIO.System.pcmBuffer + frameCountReadTotal*frameSize));
+                    frameCountReadTotal += frameCountRead;
+                    frameCountStillNeeded -= frameCountRead;
+                    if (frameCountStillNeeded == 0) break;
+                    else drflac__seek_to_first_frame((drflac *)music.ctxData);
                 }
             } break;
         #endif
@@ -1831,7 +1980,6 @@ void UpdateMusicStream(Music music)
                 if (AUDIO_DEVICE_FORMAT == ma_format_f32) jar_xm_generate_samples((jar_xm_context_t *)music.ctxData, (float *)AUDIO.System.pcmBuffer, framesToStream);
                 else if (AUDIO_DEVICE_FORMAT == ma_format_s16) jar_xm_generate_samples_16bit((jar_xm_context_t *)music.ctxData, (short *)AUDIO.System.pcmBuffer, framesToStream);
                 else if (AUDIO_DEVICE_FORMAT == ma_format_u8) jar_xm_generate_samples_8bit((jar_xm_context_t *)music.ctxData, (char *)AUDIO.System.pcmBuffer, framesToStream);
-
                 //jar_xm_reset((jar_xm_context_t *)music.ctxData);
 
             } break;
@@ -1841,7 +1989,6 @@ void UpdateMusicStream(Music music)
             {
                 // NOTE: 3rd parameter (nbsample) specify the number of stereo 16bits samples you want, so sampleCount/2
                 jar_mod_fillbuffer((jar_mod_context_t *)music.ctxData, (short *)AUDIO.System.pcmBuffer, framesToStream, 0);
-
                 //jar_mod_seek_start((jar_mod_context_t *)music.ctxData);
 
             } break;
@@ -1849,7 +1996,7 @@ void UpdateMusicStream(Music music)
             default: break;
         }
 
-        UpdateAudioStream(music.stream, AUDIO.System.pcmBuffer, framesToStream);
+        UpdateAudioStreamInLockedState(music.stream, AUDIO.System.pcmBuffer, framesToStream);
 
         music.stream.buffer->framesProcessed = music.stream.buffer->framesProcessed%music.frameCount;
 
@@ -1857,6 +2004,7 @@ void UpdateMusicStream(Music music)
         {
             if (!music.looping)
             {
+                ma_mutex_unlock(&AUDIO.System.lock);
                 // Streaming is ending, we filled latest frames from input
                 StopMusicStream(music);
                 return;
@@ -1864,9 +2012,7 @@ void UpdateMusicStream(Music music)
         }
     }
 
-    // NOTE: In case window is minimized, music stream is stopped,
-    // just make sure to play again on window restore
-    if (IsMusicStreamPlaying(music)) PlayMusicStream(music);
+    ma_mutex_unlock(&AUDIO.System.lock);
 }
 
 // Check if any music is playing
@@ -1909,7 +2055,7 @@ float GetMusicTimePlayed(Music music)
     float secondsPlayed = 0.0f;
     if (music.stream.buffer != NULL)
     {
-    #if defined(SUPPORT_FILEFORMAT_XM)
+#if defined(SUPPORT_FILEFORMAT_XM)
         if (music.ctxType == MUSIC_MODULE_XM)
         {
             uint64_t framesPlayed = 0;
@@ -1918,8 +2064,9 @@ float GetMusicTimePlayed(Music music)
             secondsPlayed = (float)framesPlayed/music.stream.sampleRate;
         }
         else
-    #endif
+#endif
         {
+            ma_mutex_lock(&AUDIO.System.lock);
             //ma_uint32 frameSizeInBytes = ma_get_bytes_per_sample(music.stream.buffer->dsp.formatConverterIn.config.formatIn)*music.stream.buffer->dsp.formatConverterIn.config.channels;
             int framesProcessed = (int)music.stream.buffer->framesProcessed;
             int subBufferSize = (int)music.stream.buffer->sizeInFrames/2;
@@ -1929,6 +2076,7 @@ float GetMusicTimePlayed(Music music)
             int framesPlayed = (framesProcessed - framesInFirstBuffer - framesInSecondBuffer + framesSentToMix)%(int)music.frameCount;
             if (framesPlayed < 0) framesPlayed += music.frameCount;
             secondsPlayed = (float)framesPlayed/music.stream.sampleRate;
+            ma_mutex_unlock(&AUDIO.System.lock);
         }
     }
 
@@ -1967,6 +2115,15 @@ AudioStream LoadAudioStream(unsigned int sampleRate, unsigned int sampleSize, un
     return stream;
 }
 
+// Checks if an audio stream is ready
+bool IsAudioStreamReady(AudioStream stream)
+{
+    return ((stream.buffer != NULL) &&    // Validate stream buffer
+            (stream.sampleRate > 0) &&    // Validate sample rate is supported
+            (stream.sampleSize > 0) &&    // Validate sample size is supported
+            (stream.channels > 0));       // Validate number of channels supported
+}
+
 // Unload audio stream and free memory
 void UnloadAudioStream(AudioStream stream)
 {
@@ -1976,55 +2133,13 @@ void UnloadAudioStream(AudioStream stream)
 }
 
 // Update audio stream buffers with data
-// NOTE 1: Only updates one buffer of the stream source: unqueue -> update -> queue
-// NOTE 2: To unqueue a buffer it needs to be processed: IsAudioStreamProcessed()
+// NOTE 1: Only updates one buffer of the stream source: dequeue -> update -> queue
+// NOTE 2: To dequeue a buffer it needs to be processed: IsAudioStreamProcessed()
 void UpdateAudioStream(AudioStream stream, const void *data, int frameCount)
 {
-    if (stream.buffer != NULL)
-    {
-        if (stream.buffer->isSubBufferProcessed[0] || stream.buffer->isSubBufferProcessed[1])
-        {
-            ma_uint32 subBufferToUpdate = 0;
-
-            if (stream.buffer->isSubBufferProcessed[0] && stream.buffer->isSubBufferProcessed[1])
-            {
-                // Both buffers are available for updating.
-                // Update the first one and make sure the cursor is moved back to the front.
-                subBufferToUpdate = 0;
-                stream.buffer->frameCursorPos = 0;
-            }
-            else
-            {
-                // Just update whichever sub-buffer is processed.
-                subBufferToUpdate = (stream.buffer->isSubBufferProcessed[0])? 0 : 1;
-            }
-
-            ma_uint32 subBufferSizeInFrames = stream.buffer->sizeInFrames/2;
-            unsigned char *subBuffer = stream.buffer->data + ((subBufferSizeInFrames*stream.channels*(stream.sampleSize/8))*subBufferToUpdate);
-
-            // Total frames processed in buffer is always the complete size, filled with 0 if required
-            stream.buffer->framesProcessed += subBufferSizeInFrames;
-
-            // Does this API expect a whole buffer to be updated in one go?
-            // Assuming so, but if not will need to change this logic.
-            if (subBufferSizeInFrames >= (ma_uint32)frameCount)
-            {
-                ma_uint32 framesToWrite = (ma_uint32)frameCount;
-
-                ma_uint32 bytesToWrite = framesToWrite*stream.channels*(stream.sampleSize/8);
-                memcpy(subBuffer, data, bytesToWrite);
-
-                // Any leftover frames should be filled with zeros.
-                ma_uint32 leftoverFrameCount = subBufferSizeInFrames - framesToWrite;
-
-                if (leftoverFrameCount > 0) memset(subBuffer + bytesToWrite, 0, leftoverFrameCount*stream.channels*(stream.sampleSize/8));
-
-                stream.buffer->isSubBufferProcessed[subBufferToUpdate] = false;
-            }
-            else TRACELOG(LOG_WARNING, "STREAM: Attempting to write too many frames to buffer");
-        }
-        else TRACELOG(LOG_WARNING, "STREAM: Buffer not available for updating");
-    }
+    ma_mutex_lock(&AUDIO.System.lock);
+    UpdateAudioStreamInLockedState(stream, data, frameCount);
+    ma_mutex_unlock(&AUDIO.System.lock);
 }
 
 // Check if any audio stream buffers requires refill
@@ -2032,7 +2147,11 @@ bool IsAudioStreamProcessed(AudioStream stream)
 {
     if (stream.buffer == NULL) return false;
 
-    return (stream.buffer->isSubBufferProcessed[0] || stream.buffer->isSubBufferProcessed[1]);
+    bool result = false;
+    ma_mutex_lock(&AUDIO.System.lock);
+    result = stream.buffer->isSubBufferProcessed[0] || stream.buffer->isSubBufferProcessed[1];
+    ma_mutex_unlock(&AUDIO.System.lock);
+    return result;
 }
 
 // Play audio stream
@@ -2053,7 +2172,7 @@ void ResumeAudioStream(AudioStream stream)
     ResumeAudioBuffer(stream.buffer);
 }
 
-// Check if audio stream is playing.
+// Check if audio stream is playing
 bool IsAudioStreamPlaying(AudioStream stream)
 {
     return IsAudioBufferPlaying(stream.buffer);
@@ -2092,12 +2211,17 @@ void SetAudioStreamBufferSizeDefault(int size)
 // Audio thread callback to request new data
 void SetAudioStreamCallback(AudioStream stream, AudioCallback callback)
 {
-    if (stream.buffer != NULL) stream.buffer->callback = callback;
+    if (stream.buffer != NULL)
+    {
+        ma_mutex_lock(&AUDIO.System.lock);
+        stream.buffer->callback = callback;
+        ma_mutex_unlock(&AUDIO.System.lock);
+    }
 }
 
-// Add processor to audio stream. Contrary to buffers, the order of processors is important.
+// Add processor to audio stream. Contrary to buffers, the order of processors is important
 // The new processor must be added at the end. As there aren't supposed to be a lot of processors attached to
-// a given stream, we iterate through the list to find the end. That way we don't need a pointer to the last element.
+// a given stream, we iterate through the list to find the end. That way we don't need a pointer to the last element
 void AttachAudioStreamProcessor(AudioStream stream, AudioCallback process)
 {
     ma_mutex_lock(&AUDIO.System.lock);
@@ -2121,6 +2245,7 @@ void AttachAudioStreamProcessor(AudioStream stream, AudioCallback process)
     ma_mutex_unlock(&AUDIO.System.lock);
 }
 
+// Remove processor from audio stream
 void DetachAudioStreamProcessor(AudioStream stream, AudioCallback process)
 {
     ma_mutex_lock(&AUDIO.System.lock);
@@ -2147,6 +2272,60 @@ void DetachAudioStreamProcessor(AudioStream stream, AudioCallback process)
     ma_mutex_unlock(&AUDIO.System.lock);
 }
 
+// Add processor to audio pipeline. Order of processors is important
+// Works the same way as {Attach,Detach}AudioStreamProcessor() functions, except
+// these two work on the already mixed output just before sending it to the sound hardware
+void AttachAudioMixedProcessor(AudioCallback process)
+{
+    ma_mutex_lock(&AUDIO.System.lock);
+
+    rAudioProcessor *processor = (rAudioProcessor *)RL_CALLOC(1, sizeof(rAudioProcessor));
+    processor->process = process;
+
+    rAudioProcessor *last = AUDIO.mixedProcessor;
+
+    while (last && last->next)
+    {
+        last = last->next;
+    }
+    if (last)
+    {
+        processor->prev = last;
+        last->next = processor;
+    }
+    else AUDIO.mixedProcessor = processor;
+
+    ma_mutex_unlock(&AUDIO.System.lock);
+}
+
+// Remove processor from audio pipeline
+void DetachAudioMixedProcessor(AudioCallback process)
+{
+    ma_mutex_lock(&AUDIO.System.lock);
+
+    rAudioProcessor *processor = AUDIO.mixedProcessor;
+
+    while (processor)
+    {
+        rAudioProcessor *next = processor->next;
+        rAudioProcessor *prev = processor->prev;
+
+        if (processor->process == process)
+        {
+            if (AUDIO.mixedProcessor == processor) AUDIO.mixedProcessor = next;
+            if (prev) prev->next = next;
+            if (next) next->prev = prev;
+
+            RL_FREE(processor);
+        }
+
+        processor = next;
+    }
+
+    ma_mutex_unlock(&AUDIO.System.lock);
+}
+
+
 //----------------------------------------------------------------------------------
 // Module specific Functions Definition
 //----------------------------------------------------------------------------------
@@ -2157,7 +2336,7 @@ static void OnLog(void *pUserData, ma_uint32 level, const char *pMessage)
     TRACELOG(LOG_WARNING, "miniaudio: %s", pMessage);   // All log messages from miniaudio are errors
 }
 
-// Reads audio data from an AudioBuffer object in internal format.
+// Reads audio data from an AudioBuffer object in internal format
 static ma_uint32 ReadAudioBufferFramesInInternalFormat(AudioBuffer *audioBuffer, void *framesOut, ma_uint32 frameCount)
 {
     // Using audio buffer callback
@@ -2174,7 +2353,7 @@ static ma_uint32 ReadAudioBufferFramesInInternalFormat(AudioBuffer *audioBuffer,
 
     if (currentSubBufferIndex > 1) return 0;
 
-    // Another thread can update the processed state of buffers so
+    // Another thread can update the processed state of buffers, so
     // we just take a copy here to try and avoid potential synchronization problems
     bool isSubBufferProcessed[2] = { 0 };
     isSubBufferProcessed[0] = audioBuffer->isSubBufferProcessed[0];
@@ -2188,7 +2367,7 @@ static ma_uint32 ReadAudioBufferFramesInInternalFormat(AudioBuffer *audioBuffer,
     {
         // We break from this loop differently depending on the buffer's usage
         //  - For static buffers, we simply fill as much data as we can
-        //  - For streaming buffers we only fill the halves of the buffer that are processed
+        //  - For streaming buffers we only fill half of the buffer that are processed
         //    Unprocessed halves must keep their audio data in-tact
         if (audioBuffer->usage == AUDIO_BUFFER_USAGE_STATIC)
         {
@@ -2231,7 +2410,7 @@ static ma_uint32 ReadAudioBufferFramesInInternalFormat(AudioBuffer *audioBuffer,
             // We need to break from this loop if we're not looping
             if (!audioBuffer->looping)
             {
-                StopAudioBuffer(audioBuffer);
+                StopAudioBufferInLockedState(audioBuffer);
                 break;
             }
         }
@@ -2245,20 +2424,20 @@ static ma_uint32 ReadAudioBufferFramesInInternalFormat(AudioBuffer *audioBuffer,
 
         // For static buffers we can fill the remaining frames with silence for safety, but we don't want
         // to report those frames as "read". The reason for this is that the caller uses the return value
-        // to know whether or not a non-looping sound has finished playback.
+        // to know whether a non-looping sound has finished playback
         if (audioBuffer->usage != AUDIO_BUFFER_USAGE_STATIC) framesRead += totalFramesRemaining;
     }
 
     return framesRead;
 }
 
-// Reads audio data from an AudioBuffer object in device format. Returned data will be in a format appropriate for mixing.
+// Reads audio data from an AudioBuffer object in device format, returned data will be in a format appropriate for mixing
 static ma_uint32 ReadAudioBufferFramesInMixingFormat(AudioBuffer *audioBuffer, float *framesOut, ma_uint32 frameCount)
 {
     // What's going on here is that we're continuously converting data from the AudioBuffer's internal format to the mixing format, which
     // should be defined by the output format of the data converter. We do this until frameCount frames have been output. The important
     // detail to remember here is that we never, ever attempt to read more input data than is required for the specified number of output
-    // frames. This can be achieved with ma_data_converter_get_required_input_frame_count().
+    // frames. This can be achieved with ma_data_converter_get_required_input_frame_count()
     ma_uint8 inputBuffer[4096] = { 0 };
     ma_uint32 inputBufferFrameCap = sizeof(inputBuffer)/ma_get_bytes_per_frame(audioBuffer->converter.formatIn, audioBuffer->converter.channelsIn);
 
@@ -2297,7 +2476,6 @@ static ma_uint32 ReadAudioBufferFramesInMixingFormat(AudioBuffer *audioBuffer, f
 
     return totalOutputFramesProcessed;
 }
-
 
 // Sending audio data to device callback function
 // This function will be called when miniaudio needs more data
@@ -2368,7 +2546,7 @@ static void OnSendAudioDataToDevice(ma_device *pDevice, void *pFramesOut, const 
                     {
                         if (!audioBuffer->looping)
                         {
-                            StopAudioBuffer(audioBuffer);
+                            StopAudioBufferInLockedState(audioBuffer);
                             break;
                         }
                         else
@@ -2386,6 +2564,13 @@ static void OnSendAudioDataToDevice(ma_device *pDevice, void *pFramesOut, const 
                 if (framesToRead > 0) break;
             }
         }
+    }
+
+    rAudioProcessor *processor = AUDIO.mixedProcessor;
+    while (processor)
+    {
+        processor->process(pFramesOut, frameCount);
+        processor = processor->next;
     }
 
     ma_mutex_unlock(&AUDIO.System.lock);
@@ -2434,6 +2619,83 @@ static void MixAudioFrames(float *framesOut, const float *framesIn, ma_uint32 fr
     }
 }
 
+// Check if an audio buffer is playing, assuming the audio system mutex has been locked
+static bool IsAudioBufferPlayingInLockedState(AudioBuffer *buffer)
+{
+    bool result = false;
+
+    if (buffer != NULL) result = (buffer->playing && !buffer->paused);
+
+    return result;
+}
+
+// Stop an audio buffer, assuming the audio system mutex has been locked
+static void StopAudioBufferInLockedState(AudioBuffer *buffer)
+{
+    if (buffer != NULL)
+    {
+        if (IsAudioBufferPlayingInLockedState(buffer))
+        {
+            buffer->playing = false;
+            buffer->paused = false;
+            buffer->frameCursorPos = 0;
+            buffer->framesProcessed = 0;
+            buffer->isSubBufferProcessed[0] = true;
+            buffer->isSubBufferProcessed[1] = true;
+        }
+    }
+}
+
+// Update audio stream, assuming the audio system mutex has been locked
+static void UpdateAudioStreamInLockedState(AudioStream stream, const void *data, int frameCount)
+{
+    if (stream.buffer != NULL)
+    {
+        if (stream.buffer->isSubBufferProcessed[0] || stream.buffer->isSubBufferProcessed[1])
+        {
+            ma_uint32 subBufferToUpdate = 0;
+
+            if (stream.buffer->isSubBufferProcessed[0] && stream.buffer->isSubBufferProcessed[1])
+            {
+                // Both buffers are available for updating
+                // Update the first one and make sure the cursor is moved back to the front
+                subBufferToUpdate = 0;
+                stream.buffer->frameCursorPos = 0;
+            }
+            else
+            {
+                // Just update whichever sub-buffer is processed
+                subBufferToUpdate = (stream.buffer->isSubBufferProcessed[0])? 0 : 1;
+            }
+
+            ma_uint32 subBufferSizeInFrames = stream.buffer->sizeInFrames/2;
+            unsigned char *subBuffer = stream.buffer->data + ((subBufferSizeInFrames*stream.channels*(stream.sampleSize/8))*subBufferToUpdate);
+
+            // Total frames processed in buffer is always the complete size, filled with 0 if required
+            stream.buffer->framesProcessed += subBufferSizeInFrames;
+
+            // Does this API expect a whole buffer to be updated in one go?
+            // Assuming so, but if not will need to change this logic
+            if (subBufferSizeInFrames >= (ma_uint32)frameCount)
+            {
+                ma_uint32 framesToWrite = (ma_uint32)frameCount;
+
+                ma_uint32 bytesToWrite = framesToWrite*stream.channels*(stream.sampleSize/8);
+                memcpy(subBuffer, data, bytesToWrite);
+
+                // Any leftover frames should be filled with zeros
+                ma_uint32 leftoverFrameCount = subBufferSizeInFrames - framesToWrite;
+
+                if (leftoverFrameCount > 0) memset(subBuffer + bytesToWrite, 0, leftoverFrameCount*stream.channels*(stream.sampleSize/8));
+
+                stream.buffer->isSubBufferProcessed[subBufferToUpdate] = false;
+            }
+            else TRACELOG(LOG_WARNING, "STREAM: Attempting to write too many frames to buffer");
+        }
+        else TRACELOG(LOG_WARNING, "STREAM: Buffer not available for updating");
+    }
+}
+
 // Some required functions for audio standalone module version
 #if defined(RAUDIO_STANDALONE)
 // Check file extension
@@ -2460,11 +2722,55 @@ static const char *GetFileExtension(const char *fileName)
     return dot;
 }
 
+// String pointer reverse break: returns right-most occurrence of charset in s
+static const char *strprbrk(const char *s, const char *charset)
+{
+    const char *latestMatch = NULL;
+    for (; s = strpbrk(s, charset), s != NULL; latestMatch = s++) { }
+    return latestMatch;
+}
+
+// Get pointer to filename for a path string
+static const char *GetFileName(const char *filePath)
+{
+    const char *fileName = NULL;
+    if (filePath != NULL) fileName = strprbrk(filePath, "\\/");
+
+    if (!fileName) return filePath;
+
+    return fileName + 1;
+}
+
+// Get filename string without extension (uses static string)
+static const char *GetFileNameWithoutExt(const char *filePath)
+{
+    #define MAX_FILENAMEWITHOUTEXT_LENGTH   256
+
+    static char fileName[MAX_FILENAMEWITHOUTEXT_LENGTH] = { 0 };
+    memset(fileName, 0, MAX_FILENAMEWITHOUTEXT_LENGTH);
+
+    if (filePath != NULL) strcpy(fileName, GetFileName(filePath));   // Get filename with extension
+
+    int size = (int)strlen(fileName);   // Get size in bytes
+
+    for (int i = 0; (i < size) && (i < MAX_FILENAMEWITHOUTEXT_LENGTH); i++)
+    {
+        if (fileName[i] == '.')
+        {
+            // NOTE: We break on first '.' found
+            fileName[i] = '\0';
+            break;
+        }
+    }
+
+    return fileName;
+}
+
 // Load data from file into a buffer
-static unsigned char *LoadFileData(const char *fileName, unsigned int *bytesRead)
+static unsigned char *LoadFileData(const char *fileName, int *dataSize)
 {
     unsigned char *data = NULL;
-    *bytesRead = 0;
+    *dataSize = 0;
 
     if (fileName != NULL)
     {
@@ -2484,7 +2790,7 @@ static unsigned char *LoadFileData(const char *fileName, unsigned int *bytesRead
 
                 // NOTE: fread() returns number of read elements instead of bytes, so we read [1 byte, size elements]
                 unsigned int count = (unsigned int)fread(data, sizeof(unsigned char), size, file);
-                *bytesRead = count;
+                *dataSize = count;
 
                 if (count != size) TRACELOG(LOG_WARNING, "FILEIO: [%s] File partially loaded", fileName);
                 else TRACELOG(LOG_INFO, "FILEIO: [%s] File loaded successfully", fileName);
@@ -2501,7 +2807,7 @@ static unsigned char *LoadFileData(const char *fileName, unsigned int *bytesRead
 }
 
 // Save data to file from buffer
-static bool SaveFileData(const char *fileName, void *data, unsigned int bytesToWrite)
+static bool SaveFileData(const char *fileName, void *data, int dataSize)
 {
     if (fileName != NULL)
     {
@@ -2509,17 +2815,27 @@ static bool SaveFileData(const char *fileName, void *data, unsigned int bytesToW
 
         if (file != NULL)
         {
-            unsigned int count = (unsigned int)fwrite(data, sizeof(unsigned char), bytesToWrite, file);
+            unsigned int count = (unsigned int)fwrite(data, sizeof(unsigned char), dataSize, file);
 
             if (count == 0) TRACELOG(LOG_WARNING, "FILEIO: [%s] Failed to write file", fileName);
-            else if (count != bytesToWrite) TRACELOG(LOG_WARNING, "FILEIO: [%s] File partially written", fileName);
+            else if (count != dataSize) TRACELOG(LOG_WARNING, "FILEIO: [%s] File partially written", fileName);
             else TRACELOG(LOG_INFO, "FILEIO: [%s] File saved successfully", fileName);
 
             fclose(file);
         }
-        else TRACELOG(LOG_WARNING, "FILEIO: [%s] Failed to open file", fileName);
+        else
+        {
+            TRACELOG(LOG_WARNING, "FILEIO: [%s] Failed to open file", fileName);
+            return false;
+        }
     }
-    else TRACELOG(LOG_WARNING, "FILEIO: File name provided is not valid");
+    else
+    {
+        TRACELOG(LOG_WARNING, "FILEIO: File name provided is not valid");
+        return false;
+    }
+
+    return true;
 }
 
 // Save text data to file (write), string must be '\0' terminated
@@ -2538,9 +2854,19 @@ static bool SaveFileText(const char *fileName, char *text)
 
             fclose(file);
         }
-        else TRACELOG(LOG_WARNING, "FILEIO: [%s] Failed to open text file", fileName);
+        else
+        {
+            TRACELOG(LOG_WARNING, "FILEIO: [%s] Failed to open text file", fileName);
+            return false;
+        }
     }
-    else TRACELOG(LOG_WARNING, "FILEIO: File name provided is not valid");
+    else
+    {
+        TRACELOG(LOG_WARNING, "FILEIO: File name provided is not valid");
+        return false;
+    }
+
+    return true;
 }
 #endif
 
